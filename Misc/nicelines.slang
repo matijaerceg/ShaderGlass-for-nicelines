@@ -65,7 +65,7 @@ void main() {
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
-layout(set = 0, binding = 3) uniform sampler2D PassFeedback0;
+layout(set = 0, binding = 3) uniform sampler2D OriginalHistory1;
 
 // sRGB conversion
 float SrgbToLinear(float c) {
@@ -157,52 +157,39 @@ void main() {
     if(global.DEV_MODE > 0.5) {
         vec2 px = vTexCoord * global.OutputSize.xy;
         
-        // BASELINE SANITY TEST: Can we read the feedback texture at all?
-        // Sample from center to avoid edge issues
-        vec4 prevState = texture(PassFeedback0, vec2(0.5, 0.5));
+        // TEST: Can we read previous frame via OriginalHistory1?
+        vec4 prevFrame = texture(OriginalHistory1, vTexCoord);
+        vec4 currFrame = texture(Source, vTexCoord);
         
-        // Test 1: Is PassFeedback0 bound? (it should return SOMETHING, not necessarily our data)
-        // Test 2: Can we write a known pattern and read it back?
-        
-        // Write a SOLID COLOR to the entire screen - magenta with alpha=0.5
-        // Next frame, prevState should read back (1.0, 0.0, 1.0, 0.5)
-        vec4 testColor = vec4(1.0, 0.0, 1.0, 0.5);
-        
-        // Read frame counter from red channel
-        float frameCount = prevState.r * 256.0;
-        
-        // Increment frame counter
-        frameCount = mod(frameCount + 1.0, 256.0);
-        
-        // SECTION 1: Top-left - show what we READ from feedback
+        // Top section: show difference between current and previous frame
         if(px.y < 100.0) {
-            vec3 debugColor = vec3(0.0);
-            
-            // Show the actual RGB values we read (amplified 10x to see small values)
-            debugColor = prevState.rgb * 10.0;
+            // Difference should show motion - amplify to make visible
+            vec3 diff = abs(currFrame.rgb - prevFrame.rgb) * 10.0;
             
             // Show numeric readout
             float digitH = 14.0;
             float digitW = digitH * 0.6;
             float text = 0.0;
             
-            // Row 1: R channel (should be 1000 if feedback works)
-            text += renderNum(prevState.r * 1000.0, px, vec2(5.0, 5.0), digitW, digitH, 4);
-            // Row 2: G channel (should be 0)
-            text += renderNum(prevState.g * 1000.0, px, vec2(5.0, 25.0), digitW, digitH, 4);
-            // Row 3: B channel (should be 1000 if feedback works)
-            text += renderNum(prevState.b * 1000.0, px, vec2(5.0, 45.0), digitW, digitH, 4);
-            // Row 4: A channel (should be 500 if feedback works)
-            text += renderNum(prevState.a * 1000.0, px, vec2(5.0, 65.0), digitW, digitH, 4);
+            // Row 1: Max difference across RGB channels * 1000
+            float maxDiff = max(max(diff.r, diff.g), diff.b);
+            text += renderNum(maxDiff * 1000.0, px, vec2(5.0, 5.0), digitW, digitH, 5);
+            // Row 2: FrameCount
+            text += renderNum(float(global.FrameCount), px, vec2(5.0, 25.0), digitW, digitH, 5);
             
-            debugColor = mix(debugColor, vec3(1.0, 1.0, 0.0), text);
+            vec3 debugColor = mix(diff, vec3(1.0, 1.0, 0.0), text);
             FragColor = vec4(debugColor, 1.0);
             return;
         }
         
-        // SECTION 2: Rest of screen - write solid magenta for feedback test
-        // If feedback works, next frame prevState should equal testColor
-        FragColor = testColor;
+        // Rest: show side-by-side comparison
+        if(vTexCoord.x < 0.5) {
+            // Left half: current frame
+            FragColor = currFrame;
+        } else {
+            // Right half: previous frame
+            FragColor = prevFrame;
+        }
         return;
     }
     
