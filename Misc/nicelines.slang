@@ -1,8 +1,8 @@
 #version 450
 
 // === PARAMETERS ===
-#pragma parameter TARGET_LINES "Scanlines (224/240/manual)" 240.0 224.0 480.0 16.0
-#pragma parameter MANUAL_LINES "Manual Scanline Count" 240.0 120.0 480.0 1.0
+#pragma parameter SCANLINE_MODE "Mode (0=224p, 1=240p, 2=Manual)" 1.0 0.0 2.0 1.0
+#pragma parameter MANUAL_LINES "Manual Scanline Count" 240.0 120.0 480.0 10.0
 #pragma parameter AUTO_LINES "Auto Adjust Num Scanlines for Resolution" 0.0 0.0 1.0 1.0
 #pragma parameter SCANLINE_FINETUNE "Scanline Count Finetune" 0.0 -40.0 40.0 1.0
 #pragma parameter SCANLINE_PHASE "Scanline Vertical Offset" 0.0 -1.0 1.0 0.01
@@ -23,7 +23,7 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     vec4 OriginalSize;
     vec4 OutputSize;
     uint FrameCount;
-    float TARGET_LINES;
+    float SCANLINE_MODE;
     float MANUAL_LINES;
     float AUTO_LINES;
     float SCANLINE_FINETUNE;
@@ -177,13 +177,16 @@ void main() {
     float minWidth = global.MIN_WIDTH;
     float maxWidth = global.MAX_WIDTH;
     
-    // Determine target scanline count
+    // Determine target scanline count based on mode
+    // Mode 0 = 224p, Mode 1 = 240p, Mode 2 = Manual
     float targetLines;
-    if(global.TARGET_LINES == 224.0 || global.TARGET_LINES == 240.0) {
-        // Preset mode (224 or 240)
-        targetLines = global.TARGET_LINES;
+    int mode = int(global.SCANLINE_MODE + 0.5);
+    if(mode == 0) {
+        targetLines = 224.0;
+    } else if(mode == 1) {
+        targetLines = 240.0;
     } else {
-        // Manual mode (user sets MANUAL_LINES slider)
+        // Manual mode (mode == 2): use MANUAL_LINES slider
         targetLines = global.MANUAL_LINES;
     }
     
