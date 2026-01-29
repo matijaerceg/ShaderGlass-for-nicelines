@@ -1,23 +1,19 @@
 #version 450
 
 // === PARAMETERS ===
-#pragma parameter COMPARE_MODE "[v19] Half Screen Compare" 0.0 0.0 1.0 1.0
+#pragma parameter COMPARE_MODE "[v21] Half Screen Compare" 0.0 0.0 1.0 1.0
 #pragma parameter SCANLINE_MODE "Num Scanlines (224p / 240p / Manual)" 0.0 0.0 2.0 1.0
 #pragma parameter MANUAL_LINES "Num for Manual Mode" 360.0 120.0 480.0 5.0
 #pragma parameter FINETUNE_LINES "Num Scanlines Finetune" 0.0 -5.0 5.0 1.0
 #pragma parameter AUTO_LINES "Num Scanlines Round to Nearest Multiple of Resolution (Recommend OFF for 2D games, ON for 3D;)" 0.0 0.0 1.0 1.0
 #pragma parameter BLUR_OFFSET "Downscaling Prepass (Lower = Softer)" 0.04 -0.04 0.12 0.01
 #pragma parameter H_BLUR "Horizontal Blur (worn out tube look)" 1.0 0.0 8.0 0.1
-
-// === EDGE MODE TEST PARAMETERS ===
-#pragma parameter EDGE_MODE "Edge Mode (0=Current, 1=ReduceSoft, 2=Clamp, 3=DisableNear1)" 0.0 0.0 3.0 1.0
-#pragma parameter EDGE_THRESHOLD "Edge: Threshold (for modes 1,3)" 0.8 0.5 1.0 0.05
-#pragma parameter EDGE_CURVE "Edge: Curve Power (for mode 1)" 2.0 0.5 4.0 0.25
+#pragma parameter EDGE_THRESHOLD "Edge Threshold (temp tuning)" 1.0 0.95 1.0 0.001
 
 // === SUBPIXEL NOISE PARAMETERS ===
 #pragma parameter SUBPIXEL_NOISE "Shadow Mask Effect" 1.0 0.0 1.0 1.0
 #pragma parameter NOISE_SWAP_RANGE "Resolution below which to halve Shadow Mask Effect intensity" 960.0 360.0 2160.0 10.0
-#pragma parameter SHIMMER_NOISE "Signal Noise Effect" 0.0 0.0 1.0 1.0
+#pragma parameter SHIMMER_NOISE "Signal Noise Effect (Requires Shadow Mask Effect)" 0.0 0.0 1.0 1.0
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
@@ -32,9 +28,7 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float AUTO_LINES;
     float BLUR_OFFSET;
     float H_BLUR;
-    float EDGE_MODE;
     float EDGE_THRESHOLD;
-    float EDGE_CURVE;
     float SUBPIXEL_NOISE;
     float NOISE_SWAP_RANGE;
     float SHIMMER_NOISE;
@@ -225,49 +219,18 @@ void main() {
     float scanlineWidth = calcScanlineWidth(color, baseWidth, minWidth, maxWidth);
     vec3 outputColor = clamp(color / scanlineWidth, 0.0, 1.0);
     
-    // Scanline mask with edge mode selection
+    // Scanline mask (hard edges at full width, soft edges otherwise)
     float scanlineMask = 1.0;
     vec3 finalColor;
     float halfGap = (1.0 - scanlineWidth) * 0.5;
     
-    int edgeMode = int(global.EDGE_MODE + 0.5);
-    float effectiveSoftness = edgeSoftness;
-    
-    if(edgeMode == 0) {
-        // Mode 0: Current behavior (unchanged)
+    if(scanlineWidth >= global.EDGE_THRESHOLD) {
+        // Full width: hard edges (no gap)
+        scanlineMask = 1.0;
+    } else {
+        // Normal soft edges
         scanlineMask = smoothstep(halfGap - edgeSoftness, halfGap + edgeSoftness, withinScanline) *
                        smoothstep(1.0 - halfGap + edgeSoftness, 1.0 - halfGap - edgeSoftness, withinScanline);
-    }
-    else if(edgeMode == 1) {
-        // Mode 1: Reduce edge softness proportional to scanline width
-        // As width approaches 1.0, softness reduces to 0
-        float widthFactor = smoothstep(global.EDGE_THRESHOLD, 1.0, scanlineWidth);
-        effectiveSoftness = edgeSoftness * pow(1.0 - widthFactor, global.EDGE_CURVE);
-        scanlineMask = smoothstep(halfGap - effectiveSoftness, halfGap + effectiveSoftness, withinScanline) *
-                       smoothstep(1.0 - halfGap + effectiveSoftness, 1.0 - halfGap - effectiveSoftness, withinScanline);
-    }
-    else if(edgeMode == 2) {
-        // Mode 2: Clamp smoothstep bounds to valid range [0, 1]
-        float fadeIn0 = max(0.0, halfGap - edgeSoftness);
-        float fadeIn1 = min(0.5, halfGap + edgeSoftness);
-        float fadeOut0 = max(0.5, 1.0 - halfGap + edgeSoftness);
-        float fadeOut1 = min(1.0, 1.0 - halfGap - edgeSoftness);
-        // Ensure proper ordering
-        if(fadeIn0 >= fadeIn1) fadeIn0 = fadeIn1 - 0.001;
-        if(fadeOut1 >= fadeOut0) fadeOut1 = fadeOut0 - 0.001;
-        scanlineMask = smoothstep(fadeIn0, fadeIn1, withinScanline) *
-                       smoothstep(fadeOut0, fadeOut1, withinScanline);
-    }
-    else if(edgeMode == 3) {
-        // Mode 3: Disable softening entirely when width >= threshold
-        if(scanlineWidth >= global.EDGE_THRESHOLD) {
-            // Hard edges: simple box
-            scanlineMask = (withinScanline >= halfGap && withinScanline <= 1.0 - halfGap) ? 1.0 : 0.0;
-        } else {
-            // Normal soft edges
-            scanlineMask = smoothstep(halfGap - edgeSoftness, halfGap + edgeSoftness, withinScanline) *
-                           smoothstep(1.0 - halfGap + edgeSoftness, 1.0 - halfGap - edgeSoftness, withinScanline);
-        }
     }
     
     finalColor = outputColor * scanlineMask;
