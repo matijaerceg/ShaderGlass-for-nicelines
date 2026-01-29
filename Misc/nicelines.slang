@@ -1,25 +1,20 @@
 #version 450
 
 // === PARAMETERS ===
-#pragma parameter TARGET_LINES "Scanlines (224/240/360/480)" 240.0 224.0 480.0 120.0
-#pragma parameter AUTO_LINES "Auto-Fit Scanlines to output resolution (pixel perfect)" 0.0 0.0 1.0 1.0
+#pragma parameter TARGET_LINES "Scanlines (224/240/manual)" 240.0 224.0 480.0 16.0
+#pragma parameter MANUAL_LINES "Manual Scanline Count" 240.0 120.0 480.0 1.0
+#pragma parameter AUTO_LINES "Auto Adjust Num Scanlines for Resolution" 0.0 0.0 1.0 1.0
 #pragma parameter SCANLINE_FINETUNE "Scanline Count Finetune" 0.0 -40.0 40.0 1.0
-#pragma parameter SCANLINE_PHASE "Scanline Phase (vertical alignment)" 0.0 -1.0 1.0 0.01
-#pragma parameter DETECT_GRID "Detect Pixel Grid (debug view)" 0.0 0.0 1.0 1.0
-#pragma parameter DETECT_ZOOM "Detect Zoom %" 500.0 100.0 1000.0 50.0
-#pragma parameter DETECT_ANCHOR "Detect Vertical Anchor (0=bot, 1=mid, 2=top)" 1.0 0.0 2.0 1.0
-#pragma parameter BLUR_OFFSET "Downscale Finetune" 0.06 -0.3 0.8 0.02
+#pragma parameter SCANLINE_PHASE "Scanline Vertical Offset" 0.0 -1.0 1.0 0.01
+#pragma parameter BLUR_OFFSET "Downscaling Resolution" 0.06 -0.3 0.8 0.02
 #pragma parameter BASE_WIDTH "Base Scanline Width" 0.3 0.2 0.8 0.05
 #pragma parameter MIN_WIDTH "Min Width (dark pixels)" 0.5 0.1 0.5 0.05
 #pragma parameter MAX_WIDTH "Max Width (bright pixels)" 1.0 0.7 1.0 0.05
 #pragma parameter VERTICAL_SOFT "Vertical Softening" 1.0 0.0 1.0 1.0
 #pragma parameter VERTICAL_AMOUNT "Vertical Softening Amount" 0.5 0.0 1.0 0.05
 #pragma parameter H_BLUR "Horizontal Blur" 1.0 0.0 4.0 0.1
-#pragma parameter COMPARE_MODE "Compare Mode (half/half)" 0.0 0.0 1.0 1.0
-#pragma parameter DEBUG_INFO "Debug Info Overlay" 0.0 0.0 1.0 1.0
-#pragma parameter AUTO_DETECT "Auto-Detect Pixel Grid" 0.0 0.0 1.0 1.0
-#pragma parameter DETECT_CONFIDENCE_THRESHOLD "Auto-Detect Confidence Threshold" 0.7 0.0 1.0 0.05
-#pragma parameter DEV_MODE "Development Mode (detection only)" 0.0 0.0 1.0 1.0
+#pragma parameter COMPARE_MODE "Half/Half" 0.0 0.0 1.0 1.0
+#pragma parameter PIXEL_WIZARD "Pixel Counting Wizard" 0.0 0.0 1.0 1.0
 
 // === UBO ===
 layout(std140, set = 0, binding = 0) uniform UBO {
@@ -29,12 +24,10 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     vec4 OutputSize;
     uint FrameCount;
     float TARGET_LINES;
+    float MANUAL_LINES;
     float AUTO_LINES;
     float SCANLINE_FINETUNE;
     float SCANLINE_PHASE;
-    float DETECT_GRID;
-    float DETECT_ZOOM;
-    float DETECT_ANCHOR;
     float BLUR_OFFSET;
     float BASE_WIDTH;
     float MIN_WIDTH;
@@ -43,10 +36,7 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float VERTICAL_AMOUNT;
     float H_BLUR;
     float COMPARE_MODE;
-    float DEBUG_INFO;
-    float AUTO_DETECT;
-    float DETECT_CONFIDENCE_THRESHOLD;
-    float DEV_MODE;
+    float PIXEL_WIZARD;
 } global;
 
 // === VERTEX STAGE ===
@@ -65,7 +55,6 @@ void main() {
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
-layout(set = 0, binding = 3) uniform sampler2D PassFeedback0;
 
 // sRGB conversion
 float SrgbToLinear(float c) {
@@ -153,60 +142,35 @@ float calcScanlineWidth(vec3 color, float baseWidth, float minWidth, float maxWi
 }
 
 void main() {
-    // === DEVELOPMENT MODE: Detection proof-of-concept ===
-    if(global.DEV_MODE > 0.5) {
+void main() {
+    // === PIXEL COUNTING WIZARD MODE ===
+    if(global.PIXEL_WIZARD > 0.5) {
+        // TODO: Detect fat pixel count per frame
+        float detectedCount = 240.0; // Placeholder
+        float detectedOffset = 0.0;   // Placeholder (not detecting yet)
+        
         vec2 px = vTexCoord * global.OutputSize.xy;
         
-        // Read counter from a FIXED LOCATION (pixel 1,1) in previous output
-        vec2 storageCoord = vec2(1.5, 1.5) / global.OutputSize.xy;
-        vec4 prevState = texture(PassFeedback0, storageCoord);
-        
-        // Increment counter stored in red channel
-        float counter = prevState.r * 1000.0;
-        counter = mod(counter + 1.0, 1000.0);
-        
-        // FIRST: Write state to storage pixel (1,1)
-        if(px.x >= 1.0 && px.x < 2.0 && px.y >= 1.0 && px.y < 2.0) {
-            FragColor = vec4(counter / 1000.0, 0.0, 0.0, 1.0);
-            return;
-        }
-        
-        // Top section: show counter and feedback values
+        // Display detected values at top of screen
         if(px.y < 100.0) {
             vec3 debugColor = vec3(0.0);
             
-            // Show numeric readout
-            float digitH = 14.0;
+            float digitH = 20.0;
             float digitW = digitH * 0.6;
             float text = 0.0;
             
-            // Row 1: Counter value (should increment each frame)
-            text += renderNum(counter, px, vec2(5.0, 5.0), digitW, digitH, 5);
-            // Row 2: FrameCount for comparison
-            text += renderNum(float(global.FrameCount), px, vec2(5.0, 25.0), digitW, digitH, 5);
-            // Row 3: Previous R channel * 1000
-            text += renderNum(prevState.r * 1000.0, px, vec2(5.0, 45.0), digitW, digitH, 5);
+            // Row 1: Detected scanline count
+            text += renderNum(detectedCount, px, vec2(10.0, 10.0), digitW, digitH, 4);
+            // Row 2: Detected offset (not yet implemented)
+            text += renderNum(detectedOffset, px, vec2(10.0, 40.0), digitW, digitH, 4);
             
-            debugColor = mix(debugColor, vec3(1.0, 1.0, 0.0), text);
+            debugColor = mix(debugColor, vec3(0.0, 1.0, 0.5), text);
             FragColor = vec4(debugColor, 1.0);
             return;
         }
         
-        // Progress bar area: visual counter
-        if(px.y >= 100.0 && px.y < 120.0) {
-            float progress = counter / 1000.0;
-            vec3 barColor;
-            if(vTexCoord.x < progress) {
-                barColor = vec3(0.0, 1.0, 0.5); // Cyan = filled
-            } else {
-                barColor = vec3(0.2, 0.2, 0.2); // Dark = empty
-            }
-            FragColor = vec4(barColor, 1.0);
-            return;
-        }
-        
-        // Rest of screen: show source image dimmed
-        FragColor = vec4(texture(Source, vTexCoord).rgb * 0.3, 1.0);
+        // Show dimmed source for rest of screen
+        FragColor = vec4(texture(Source, vTexCoord).rgb * 0.5, 1.0);
         return;
     }
     
@@ -215,8 +179,17 @@ void main() {
     float minWidth = global.MIN_WIDTH;
     float maxWidth = global.MAX_WIDTH;
     
-    // Auto-fit lines: find nearest factor of output height to target
-    float targetLines = global.TARGET_LINES;
+    // Determine target scanline count
+    float targetLines;
+    if(global.TARGET_LINES == 224.0 || global.TARGET_LINES == 240.0) {
+        // Preset mode (224 or 240)
+        targetLines = global.TARGET_LINES;
+    } else {
+        // Manual mode (user sets MANUAL_LINES slider)
+        targetLines = global.MANUAL_LINES;
+    }
+    
+    // Auto-fit: find nearest factor of output height to target
     if(global.AUTO_LINES > 0.5) {
         float outputHeight = global.OutputSize.y;
         float idealPixelsPerLine = outputHeight / targetLines;
@@ -407,8 +380,8 @@ void main() {
         finalColor = vec3(0.0);
     }
     
-    // Manual pixel grid detection mode - three panel view
-    if(global.DETECT_GRID > 0.5) {
+    FragColor = vec4(LinearToSrgb3(finalColor), 1.0);
+}
         vec2 px = vTexCoord * global.OutputSize.xy;
         vec3 debugColor = vec3(0.0);
         
