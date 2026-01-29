@@ -157,23 +157,35 @@ void main() {
     if(global.DEV_MODE > 0.5) {
         vec2 px = vTexCoord * global.OutputSize.xy;
         
-        // Read previous detection state from top-left corner using texture()
-        // Sample at center of pixel (0,0)
-        vec2 feedbackUV = vec2(0.5 / global.OutputSize.x, 0.5 / global.OutputSize.y);
-        vec4 prevState = texture(PassFeedback0, feedbackUV);
+        // Read previous detection state - sample from center of screen since we write everywhere
+        vec4 prevState = texture(PassFeedback0, vec2(0.5, 0.5));
         
-        // Debug: Show what we're reading from feedback
-        // Top-left corner: red=prevState values, green=whether alpha > 0
-        if(px.x < 200.0 && px.y < 50.0) {
+        float frameCount = prevState.a * 256.0;
+        
+        // Debug: Show what we're reading from feedback in top-left
+        if(px.x < 300.0 && px.y < 50.0) {
             vec3 debugColor = vec3(0.0);
-            debugColor.r = prevState.a * 50.0; // Amplify alpha channel
-            debugColor.g = (prevState.a > 0.001) ? 1.0 : 0.0; // Green if alpha exists
-            debugColor.b = prevState.r + prevState.g + prevState.b; // Any RGB data?
+            debugColor.r = prevState.a; // Raw alpha value (0-1)
+            debugColor.g = prevState.r; // Should show frameCount/256 that we wrote
+            debugColor.b = frameCount / 256.0; // What we computed from alpha
+            
+            // Show numeric readout of all values
+            float digitH = 14.0;
+            float digitW = digitH * 0.6;
+            float text = 0.0;
+            
+            // Row 1: Raw alpha value * 1000
+            text += renderNum(prevState.a * 1000.0, px, vec2(5.0, 5.0), digitW, digitH, 3);
+            // Row 2: Computed frameCount
+            text += renderNum(frameCount, px, vec2(5.0, 25.0), digitW, digitH, 3);
+            
+            debugColor = mix(debugColor, vec3(1.0, 1.0, 0.0), text);
             FragColor = vec4(debugColor, 1.0);
             return;
         }
         
-        float frameCount = prevState.a * 256.0;
+        // CRITICAL: Read from red channel instead of alpha, since we write there too
+        frameCount = prevState.r * 256.0;
         
         // Increment frame counter
         frameCount = mod(frameCount + 1.0, 256.0);
