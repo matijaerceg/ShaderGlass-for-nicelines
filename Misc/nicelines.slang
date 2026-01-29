@@ -113,7 +113,8 @@ float renderNum(float val, vec2 px, vec2 pos, float w, float h, int digits) {
         vec2 p = (px - dp) / vec2(w, h);
         p.y = 1.0 - p.y; // Flip Y coordinate
         if(p.x >= 0.0 && p.x <= 1.0 && p.y >= 0.0 && p.y <= 1.0) {
-            int div = 1; for(int j = 0; j < i; j++) div *= 10;
+            int div = 1;
+            for(int j = 0; j < i; j++) { div *= 10; }
             int digit = (v / div) % 10;
             if(i == 0 || v >= div) r = max(r, draw7Seg(p, digit));
         }
@@ -154,7 +155,7 @@ void main() {
         
         // Histogram for pitch votes (indices 0-9 represent pitches 3-12)
         float histogram[10];
-        for(int i = 0; i < 10; i++) histogram[i] = 0.0;
+        for(int i = 0; i < 10; i++) { histogram[i] = 0.0; }
         
         // Sample 16 columns from center 80% (10% to 90%)
         const int NUM_COLUMNS = 16;
