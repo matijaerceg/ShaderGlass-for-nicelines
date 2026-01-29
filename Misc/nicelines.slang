@@ -1,9 +1,9 @@
 #version 450
 
 // === PARAMETERS ===
-#pragma parameter COMPARE_MODE "[v16] Half Screen Compare" 0.0 0.0 1.0 1.0
+#pragma parameter COMPARE_MODE "[v17] Half Screen Compare" 0.0 0.0 1.0 1.0
 #pragma parameter SCANLINE_MODE "Num Scanlines (224p / 240p / Manual)" 0.0 0.0 2.0 1.0
-#pragma parameter MANUAL_LINES "Num for Manual Mode" 360.0 120.0 480.0 10.0
+#pragma parameter MANUAL_LINES "Num for Manual Mode" 360.0 120.0 480.0 1.0
 #pragma parameter AUTO_LINES "Num Scanlines Round to Nearest Multiple of Resolution (Recommend OFF for 2D games, ON for 3D;)" 0.0 0.0 1.0 1.0
 #pragma parameter BLUR_OFFSET "Downscaling Prepass (Lower = Softer)" 0.04 -0.04 0.12 0.01
 #pragma parameter H_BLUR "Horizontal Blur (worn out tube look)" 1.0 0.0 8.0 0.1
