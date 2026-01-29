@@ -1,7 +1,7 @@
 #version 450
 
 // === PARAMETERS ===
-#pragma parameter SCANLINE_MODE "[v8] Mode (0=224p, 1=240p, 2=Manual, 3=Off)" 0.0 0.0 3.0 1.0
+#pragma parameter SCANLINE_MODE "[v9] Mode (0=224p, 1=240p, 2=Manual, 3=Off)" 0.0 0.0 3.0 1.0
 #pragma parameter MANUAL_LINES "Manual Scanline Count" 240.0 120.0 480.0 10.0
 #pragma parameter AUTO_LINES "Auto Adjust Num Scanlines for Resolution" 0.0 0.0 1.0 1.0
 #pragma parameter BLUR_OFFSET "Downscaling Resolution" 0.04 -0.04 0.12 0.01
@@ -19,7 +19,7 @@
 #pragma parameter NOISE_ZIGZAG_PITCH "Noise: Zigzag Pitch (pixels)" 6.0 2.0 24.0 1.0
 #pragma parameter NOISE_ZIGZAG_HARMONICS "Noise: Zigzag Complexity" 0.5 0.0 1.0 0.1
 #pragma parameter NOISE_SWAP_RANGE "Noise: Horizontal Swap Range" 2.0 0.0 2.0 1.0
-#pragma parameter NOISE_SWAP_PHASE "Noise: Swap Phase (x Scanline Height)" 0.5 0.0 1.0 0.05
+#pragma parameter NOISE_SWAP_PHASE "Noise: Swap Phase (x Scanline Height)" 1.0 0.0 2.0 0.05
 #pragma parameter NOISE_SEED "Noise: Pattern Seed" 0.0 0.0 99.0 1.0
 
 layout(std140, set = 0, binding = 0) uniform UBO {
