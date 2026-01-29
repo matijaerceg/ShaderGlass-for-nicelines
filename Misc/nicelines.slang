@@ -457,28 +457,22 @@ void main() {
             // Each phosphor shows its channel; brightness redistributes spatially
             // Energy-conserving: average of 3 adjacent pixels = original color
             //
-            // The key insight: we need to boost by 3x to compensate for only showing
-            // 1/3 of the area lit with each channel. But we can't exceed 1.0.
-            // So we use adaptive boosting that's higher for dark values.
+            // Simple 3x boost with overflow redistribution:
+            // - Primary phosphor gets min(3*c, 1.0)
+            // - Overflow spills equally to the other 2 phosphors
+            // This perfectly preserves total energy across the triad.
             
             for(int ch = 0; ch < 3; ch++) {
                 float c = avgColor[ch];
-                
-                // Adaptive boost: stronger for darks, weaker for brights
-                // At c=0: boost=3 (full compensation)
-                // At c=1: boost=1 (no clipping)
-                // Curve chosen to preserve perceived brightness
-                float boost = 3.0 / (1.0 + 2.0 * c);
-                float boostedValue = c * boost;
+                float totalEnergy = c * 3.0;  // Energy needed to maintain brightness
                 
                 if(rgbIndex == ch) {
-                    // This is the primary phosphor for this channel
-                    triadColor[ch] = min(boostedValue, 1.0);
+                    // Primary phosphor: emit as much as possible (up to 1.0)
+                    triadColor[ch] = min(totalEnergy, 1.0);
                 } else {
-                    // Adjacent phosphors: show spillover for bright values
-                    // When primary would clip, redistribute to neighbors
-                    float overflow = max(0.0, boostedValue - 1.0);
-                    triadColor[ch] = overflow * 0.5; // Split overflow between 2 neighbors
+                    // Other phosphors: receive overflow from primary
+                    float overflow = max(0.0, totalEnergy - 1.0);
+                    triadColor[ch] = overflow * 0.5;  // Split between 2 neighbors
                 }
             }
             
