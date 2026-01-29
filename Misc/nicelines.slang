@@ -4,17 +4,15 @@
 #pragma parameter SCANLINE_MODE "Mode (0=224p, 1=240p, 2=Manual)" 1.0 0.0 2.0 1.0
 #pragma parameter MANUAL_LINES "Manual Scanline Count" 240.0 120.0 480.0 10.0
 #pragma parameter AUTO_LINES "Auto Adjust Num Scanlines for Resolution" 0.0 0.0 1.0 1.0
-#pragma parameter SCANLINE_FINETUNE "Scanline Count Finetune" 0.0 -40.0 40.0 1.0
-#pragma parameter SCANLINE_PHASE "Scanline Vertical Offset" 0.0 -1.0 1.0 0.01
 #pragma parameter BLUR_OFFSET "Downscaling Resolution" 0.06 -0.3 0.8 0.02
-#pragma parameter BASE_WIDTH "Base Scanline Width" 0.3 0.2 0.8 0.05
-#pragma parameter MIN_WIDTH "Min Width (dark pixels)" 0.5 0.1 0.5 0.05
-#pragma parameter MAX_WIDTH "Max Width (bright pixels)" 1.0 0.7 1.0 0.05
+#pragma parameter BASE_WIDTH "Scanline Thickness Baseline" 0.3 0.2 0.8 0.05
+#pragma parameter MIN_WIDTH "Scanline Thickness Min (dark)" 0.5 0.1 0.5 0.05
+#pragma parameter MAX_WIDTH "Scanline Thickness Max (bright)" 1.0 0.7 1.0 0.05
 #pragma parameter VERTICAL_SOFT "Vertical Softening" 1.0 0.0 1.0 1.0
 #pragma parameter VERTICAL_AMOUNT "Vertical Softening Amount" 0.5 0.0 1.0 0.05
 #pragma parameter H_BLUR "Horizontal Blur" 1.0 0.0 4.0 0.1
 #pragma parameter COMPARE_MODE "Half/Half" 0.0 0.0 1.0 1.0
-#pragma parameter PIXEL_WIZARD "Pixel Counting Wizard" 0.0 0.0 1.0 1.0
+#pragma parameter DEBUG_INFO "Debug Info" 0.0 0.0 1.0 1.0
 
 // === UBO ===
 layout(std140, set = 0, binding = 0) uniform UBO {
@@ -26,8 +24,6 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float SCANLINE_MODE;
     float MANUAL_LINES;
     float AUTO_LINES;
-    float SCANLINE_FINETUNE;
-    float SCANLINE_PHASE;
     float BLUR_OFFSET;
     float BASE_WIDTH;
     float MIN_WIDTH;
@@ -36,7 +32,7 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float VERTICAL_AMOUNT;
     float H_BLUR;
     float COMPARE_MODE;
-    float PIXEL_WIZARD;
+    float DEBUG_INFO;
 } global;
 
 // === VERTEX STAGE ===
@@ -145,7 +141,7 @@ float calcScanlineWidth(vec3 color, float baseWidth, float minWidth, float maxWi
 void main() {
     // === PIXEL COUNTING WIZARD MODE ===
     // Shows source dimensions to help manually count scanlines
-    if(global.PIXEL_WIZARD > 0.5) {
+    if(global.DEBUG_INFO > 0.5) {
         vec2 px = vTexCoord * global.OutputSize.xy;
         
         // Display source dimensions at top of screen
@@ -198,9 +194,6 @@ void main() {
         targetLines = outputHeight / pixelsPerLine;
     }
     
-    // Apply scanline finetune offset (after auto-fit)
-    targetLines = max(60.0, targetLines + global.SCANLINE_FINETUNE);
-    
     // Compare mode: right half shows original
     if(global.COMPARE_MODE > 0.5 && vTexCoord.x > 0.5) {
         vec3 color = texture(Source, vTexCoord).rgb;
@@ -212,12 +205,12 @@ void main() {
     // This ensures adjusting targetLines expands/contracts from screen center
     float distFromCenter = vTexCoord.y - 0.5; // -0.5 to +0.5
     float scanlineOffset = distFromCenter * targetLines; // scanlines from center
-    float scanlinePos = scanlineOffset + global.SCANLINE_PHASE;
+    float scanlinePos = scanlineOffset;
     float scanlineIndex = floor(scanlinePos);
     
     // Sample at scanline center (center-anchored)
     float sampleScanlinePos = scanlineIndex + 0.5;
-    float sampleDistFromCenter = (sampleScanlinePos - global.SCANLINE_PHASE) / targetLines;
+    float sampleDistFromCenter = sampleScanlinePos / targetLines;
     vec2 sampleUV = vec2(vTexCoord.x, clamp(0.5 + sampleDistFromCenter, 0.0, 1.0));
     
     float withinScanline = fract(scanlinePos);
@@ -265,17 +258,17 @@ void main() {
     // Scanline mask (centered)
     float halfGap = (1.0 - scanlineWidth) * 0.5;
     
-    // Edge softness calculation
-    float pixelsPerScanline = global.OutputSize.y / targetLines;
-    float baseEdgeSoftness = 0.5 / pixelsPerScanline;
+    // Edge softness calculation (resolution-independent, works in scanline-normalized space)
+    // Base softness is a fraction of scanline height (0.05 = 5% of one scanline)
+    float baseEdgeSoftness = 0.05;
     
     // Vertical softening: increase edge softness for softer/glowier scanlines
     float edgeSoftness = baseEdgeSoftness;
     if(global.VERTICAL_SOFT > 0.5) {
         // Exponential curve: pow(x, 2.5) makes slider less sensitive at low values
-        // 0.1 -> 0.003, 0.3 -> 0.05, 0.5 -> 0.18, 0.7 -> 0.41, 1.0 -> 1.0
         float curvedAmount = pow(global.VERTICAL_AMOUNT, 2.5);
-        float extraSoftness = curvedAmount * (4.0 / pixelsPerScanline);
+        // Extra softness up to ~25% of scanline height at max
+        float extraSoftness = curvedAmount * 0.25;
         edgeSoftness = baseEdgeSoftness + extraSoftness;
     }
     
