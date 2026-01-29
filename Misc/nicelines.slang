@@ -4,7 +4,7 @@
 #pragma parameter SCANLINE_MODE "Mode (0=224p, 1=240p, 2=Manual)" 1.0 0.0 2.0 1.0
 #pragma parameter MANUAL_LINES "Manual Scanline Count" 240.0 120.0 480.0 10.0
 #pragma parameter AUTO_LINES "Auto Adjust Num Scanlines for Resolution" 0.0 0.0 1.0 1.0
-#pragma parameter BLUR_OFFSET "Downscaling Resolution" 0.06 -0.3 0.8 0.02
+#pragma parameter BLUR_OFFSET "Downscaling Resolution" 0.04 -0.04 0.12 0.01
 #pragma parameter BASE_WIDTH "Scanline Thickness Baseline" 0.3 0.2 0.8 0.05
 #pragma parameter MIN_WIDTH "Scanline Thickness Min (dark)" 0.5 0.1 0.5 0.05
 #pragma parameter MAX_WIDTH "Scanline Thickness Max (bright)" 1.0 0.7 1.0 0.05
