@@ -1,24 +1,24 @@
 #version 450
 
 // === PARAMETERS ===
-#pragma parameter SCANLINE_MODE "Mode (0=224p, 1=240p, 2=Manual)" 1.0 0.0 2.0 1.0
+#pragma parameter SCANLINE_MODE "Mode (0=224p, 1=240p, 2=Manual)" 0.0 0.0 2.0 1.0
 #pragma parameter MANUAL_LINES "Manual Scanline Count" 240.0 120.0 480.0 10.0
 #pragma parameter AUTO_LINES "Auto Adjust Num Scanlines for Resolution" 0.0 0.0 1.0 1.0
 #pragma parameter BLUR_OFFSET "Downscaling Resolution" 0.04 -0.04 0.12 0.01
 #pragma parameter BASE_WIDTH "Scanline Thickness Baseline" 0.3 0.2 0.8 0.05
 #pragma parameter MIN_WIDTH "Scanline Thickness Min (dark)" 0.5 0.1 0.5 0.05
 #pragma parameter MAX_WIDTH "Scanline Thickness Max (bright)" 1.0 0.7 1.0 0.05
-#pragma parameter VERTICAL_SOFT "Vertical Softening" 1.0 0.0 1.0 1.0
+#pragma parameter VERTICAL_SOFT "Vertical Softening" 0.0 0.0 1.0 1.0
 #pragma parameter VERTICAL_AMOUNT "Vertical Softening Amount" 0.5 0.0 1.0 0.05
 #pragma parameter H_BLUR "Horizontal Blur" 1.0 0.0 4.0 0.1
 #pragma parameter COMPARE_MODE "Half/Half" 0.0 0.0 1.0 1.0
 #pragma parameter DEBUG_INFO "Debug Info" 0.0 0.0 1.0 1.0
 
 // === TRIAD PHOSPHOR PARAMETERS ===
-#pragma parameter TRIAD_MODE "Phosphor Triad Mode (0=Off, 1=Collapse, 2=Lottes)" 0.0 0.0 2.0 1.0
-#pragma parameter TRIAD_HEIGHT "Triad Cell Height (pixels)" 4.0 1.0 16.0 1.0
-#pragma parameter TRIAD_OFFSET "Zigzag Offset Amount" 0.5 0.0 1.0 0.1
-#pragma parameter TRIAD_DARK "Lottes: Non-lit Phosphor Darkness" 0.125 0.0 0.5 0.025
+#pragma parameter TRIAD_MODE "Phosphor Triad Mode (0=Off, 1=Collapse, 2=Lottes)" 1.0 0.0 2.0 1.0
+#pragma parameter TRIAD_HEIGHT "Triad Cell Height (pixels)" 1.0 1.0 16.0 1.0
+#pragma parameter TRIAD_OFFSET "Zigzag Offset Amount" 0.0 0.0 1.0 0.1
+#pragma parameter TRIAD_DARK "Lottes: Non-lit Phosphor Darkness" 0.5 0.0 1.0 0.05
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
@@ -384,25 +384,34 @@ void main() {
     }
 
     // === PHOSPHOR TRIAD MODES ===
-    // 0 = off, 1 = spatial collapse (energy-conserving), 2 = Lottes (adaptive boost)
-    // Note: Triad sampling bypasses H_BLUR for performance; applies scanlines directly
+    // 0 = off, 1 = spatial collapse (energy-conserving), 2 = Lottes slot mask (arcade)
     if(global.TRIAD_MODE > 0.1) {
         vec2 px = vTexCoord * global.OutputSize.xy;
         float triadH = max(1.0, global.TRIAD_HEIGHT);
+        
+        // Determine which phosphor (R=0, G=1, B=2) based on x position
         int rgbIndex = int(mod(floor(px.x), 3.0));
+        
+        // Triad column (each triad is 3 pixels wide)
         int triadCol = int(floor(px.x / 3.0));
+        
+        // Zigzag offset for alternate columns
         float yOffset = 0.0;
         if(mod(float(triadCol), 2.0) >= 1.0) {
             yOffset = triadH * global.TRIAD_OFFSET;
         }
+        
         float adjustedY = px.y + yOffset;
         int triadRow = int(floor(adjustedY / triadH));
         float cellLeft = float(triadCol) * 3.0;
         float cellTop = float(triadRow) * triadH - yOffset;
+        
+        // Sample the triad cell area to get average color
         vec3 avgColor = vec3(0.0);
         float sampleCount = 0.0;
         int samplesX = 3;
         int samplesY = max(1, int(triadH));
+        
         for(int sy = 0; sy < 16; sy++) {
             if(sy >= samplesY) break;
             for(int sx = 0; sx < samplesX; sx++) {
@@ -410,7 +419,8 @@ void main() {
                 float sampleY = cellTop + float(sy) + 0.5;
                 vec2 triadSampleUV = vec2(sampleX, sampleY) / global.OutputSize.xy;
                 triadSampleUV = clamp(triadSampleUV, vec2(0.0), vec2(1.0));
-                // Use the same scanline logic as above for each sample
+                
+                // Recalculate scanline for this sample position
                 float sampleDistFromCenter = triadSampleUV.y - 0.5;
                 float sampleScanlineOffset = sampleDistFromCenter * targetLines;
                 float sampleScanlinePos = sampleScanlineOffset;
@@ -419,17 +429,21 @@ void main() {
                 float sampleScanlineCenterPos = sampleScanlineIndex + 0.5;
                 float sampleScanlineCenterDistFromCenter = sampleScanlineCenterPos / targetLines;
                 vec2 srcSampleUV = vec2(triadSampleUV.x, clamp(0.5 + sampleScanlineCenterDistFromCenter, 0.0, 1.0));
+                
                 vec3 srcColor = SrgbToLinear3(texture(Source, srcSampleUV).rgb);
                 float sampleScanlineWidth = calcScanlineWidth(srcColor, baseWidth, minWidth, maxWidth);
                 vec3 sampleOutputColor = clamp(srcColor / sampleScanlineWidth, 0.0, 1.0);
+                
                 float sampleHalfGap = (1.0 - sampleScanlineWidth) * 0.5;
                 float sampleEdgeSoftness = baseEdgeSoftness;
                 if(global.VERTICAL_SOFT > 0.5) {
                     float curvedAmount = pow(global.VERTICAL_AMOUNT, 2.5);
                     sampleEdgeSoftness = baseEdgeSoftness + curvedAmount * 0.25;
                 }
+                
                 float sampleMask = smoothstep(sampleHalfGap - sampleEdgeSoftness, sampleHalfGap + sampleEdgeSoftness, sampleWithinScanline) *
                                    smoothstep(1.0 - sampleHalfGap + sampleEdgeSoftness, 1.0 - sampleHalfGap - sampleEdgeSoftness, sampleWithinScanline);
+                
                 avgColor += sampleOutputColor * sampleMask;
                 sampleCount += 1.0;
             }
@@ -437,40 +451,97 @@ void main() {
         avgColor /= max(1.0, sampleCount);
 
         vec3 triadColor = vec3(0.0);
+        
         if(abs(global.TRIAD_MODE - 1.0) < 0.1) {
-            // === User's spatial collapse approach ===
+            // === COLLAPSE MODE ===
+            // Each phosphor shows its channel; brightness redistributes spatially
+            // Energy-conserving: average of 3 adjacent pixels = original color
+            //
+            // The key insight: we need to boost by 3x to compensate for only showing
+            // 1/3 of the area lit with each channel. But we can't exceed 1.0.
+            // So we use adaptive boosting that's higher for dark values.
+            
             for(int ch = 0; ch < 3; ch++) {
                 float c = avgColor[ch];
-                float primaryOut, neighborOut;
-                if(c >= 1.0/3.0) {
-                    primaryOut = 1.0;
-                    neighborOut = (c * 3.0 - 1.0) * 0.5;
-                } else {
-                    primaryOut = c * 3.0;
-                    neighborOut = 0.0;
-                }
+                
+                // Adaptive boost: stronger for darks, weaker for brights
+                // At c=0: boost=3 (full compensation)
+                // At c=1: boost=1 (no clipping)
+                // Curve chosen to preserve perceived brightness
+                float boost = 3.0 / (1.0 + 2.0 * c);
+                float boostedValue = c * boost;
+                
                 if(rgbIndex == ch) {
-                    triadColor[ch] = primaryOut;
+                    // This is the primary phosphor for this channel
+                    triadColor[ch] = min(boostedValue, 1.0);
                 } else {
-                    triadColor[ch] = neighborOut;
+                    // Adjacent phosphors: show spillover for bright values
+                    // When primary would clip, redistribute to neighbors
+                    float overflow = max(0.0, boostedValue - 1.0);
+                    triadColor[ch] = overflow * 0.5; // Split overflow between 2 neighbors
                 }
             }
+            
         } else if(abs(global.TRIAD_MODE - 2.0) < 0.1) {
-            // === Lottes' adaptive approach ===
+            // === LOTTES SLOT MASK (ARCADE MODE) ===
+            // Direct port of Tim Lottes' RVM_MODE==2 slot mask
+            // Pattern: 6 pixels wide (2 triads), 4 pixels tall
+            // Alternating rows offset by half, creating a brick/slot pattern
+            // Bottom 1/4 of each cell is always dark (the "slot")
+            
             float dark = global.TRIAD_DARK;
-            float lim = 1.0 / ((1.0/3.0) + (2.0/3.0) * dark);
+            
+            // Normalization factor to maintain brightness
+            // Accounts for: 3/12 pixels dark + 9/12 pixels at 'dark' level
+            float lim = 1.0 / ((3.0/12.0) + (9.0/12.0) * dark);
+            
+            // Working copy of pixel position for pattern calculation
+            vec2 ipos = px;
+            
+            // Zigzag: offset every other 6-pixel column by 2 pixels vertically
+            if(fract(ipos.x / 6.0) > 0.5) {
+                ipos.y += 2.0;
+            }
+            
+            // Vertical position within 4-pixel cell (0.0 to 1.0)
+            float cellY = fract(ipos.y / 4.0);
+            
+            // Horizontal position within 3-pixel triad (0.0 to 1.0)
+            float cellX = fract(ipos.x / 3.0);
+            
+            // Base dark color: squared for nonlinear darkening, scaled by dark factor
             vec3 colD = avgColor * avgColor * dark;
-            vec3 amp = 1.0 / (vec3(lim/3.0) + vec3(lim*2.0/3.0) * avgColor);
+            
+            // Adaptive amplification to prevent clipping while maintaining brightness
+            vec3 amp = 1.0 / (vec3(lim * 3.0/12.0) + vec3(lim * 9.0/12.0) * avgColor);
+            
+            // Apply amplification to both full and dark colors
             vec3 col = avgColor * amp;
             colD *= amp;
+            
+            // Start with dark color everywhere
             triadColor = colD;
-            if(rgbIndex == 0) triadColor.r = col.r;
-            if(rgbIndex == 1) triadColor.g = col.g;
-            if(rgbIndex == 2) triadColor.b = col.b;
+            
+            // Only light up phosphors in top 3/4 of cell (cellY > 0.25)
+            // This creates the "slot" pattern - bottom row of each cell is dark
+            if(cellY > 0.25) {
+                // Apply RGB phosphor pattern based on horizontal position
+                if(cellX < (1.0/3.0)) {
+                    triadColor.r = col.r;  // Red phosphor
+                } else if(cellX < (2.0/3.0)) {
+                    triadColor.g = col.g;  // Green phosphor
+                } else {
+                    triadColor.b = col.b;  // Blue phosphor
+                }
+            }
+            
             triadColor = clamp(triadColor, 0.0, 1.0);
+            
         } else {
+            // Fallback: just use averaged color
             triadColor = avgColor;
         }
+        
         finalColor = triadColor;
     }
 
