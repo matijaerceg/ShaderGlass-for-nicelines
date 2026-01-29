@@ -153,14 +153,13 @@ void main() {
         
         float texelY = 1.0 / global.SourceSize.y;
         
-        // Histogram for pitch votes (indices 0-9 represent pitches 3-12)
-        float histogram[10];
-        for(int i = 0; i < 10; i++) { histogram[i] = 0.0; }
+        // Histogram for pitch votes (pitches 3-12) - use individual vars for GLSL compat
+        float h3 = 0.0, h4 = 0.0, h5 = 0.0, h6 = 0.0, h7 = 0.0;
+        float h8 = 0.0, h9 = 0.0, h10 = 0.0, h11 = 0.0, h12 = 0.0;
         
         // Sample 16 columns from center 80% (10% to 90%)
-        const int NUM_COLUMNS = 16;
-        for(int col = 0; col < NUM_COLUMNS; col++) {
-            float xPos = 0.1 + (float(col) + 0.5) / float(NUM_COLUMNS) * 0.8;
+        for(int col = 0; col < 16; col++) {
+            float xPos = 0.1 + (float(col) + 0.5) / 16.0 * 0.8;
             
             // Test pitches 3-12 pixels
             float bestCorr = -99999.0;
@@ -168,11 +167,10 @@ void main() {
             
             for(int p = 3; p <= 12; p++) {
                 float corr = 0.0;
-                
-                // Sum correlation over many Y positions (center 60% of image)
-                // Sample every other pixel to reduce computation
                 int numSamples = 0;
-                for(int y = int(global.SourceSize.y * 0.2); y < int(global.SourceSize.y * 0.8) - p; y += 2) {
+                
+                // Sum correlation over center 60% of image, every 4th pixel for speed
+                for(int y = int(global.SourceSize.y * 0.2); y < int(global.SourceSize.y * 0.8) - p; y += 4) {
                     float yUV = (float(y) + 0.5) * texelY;
                     float yUV_offset = (float(y + p) + 0.5) * texelY;
                     
@@ -190,7 +188,6 @@ void main() {
                     numSamples++;
                 }
                 
-                // Normalize by number of samples
                 corr /= float(max(numSamples, 1));
                 
                 if(corr > bestCorr) {
@@ -199,19 +196,31 @@ void main() {
                 }
             }
             
-            // Vote for this pitch
-            histogram[bestPitch - 3] += 1.0;
+            // Vote for this pitch (manual switch for GLSL compatibility)
+            if(bestPitch == 3) h3 += 1.0;
+            else if(bestPitch == 4) h4 += 1.0;
+            else if(bestPitch == 5) h5 += 1.0;
+            else if(bestPitch == 6) h6 += 1.0;
+            else if(bestPitch == 7) h7 += 1.0;
+            else if(bestPitch == 8) h8 += 1.0;
+            else if(bestPitch == 9) h9 += 1.0;
+            else if(bestPitch == 10) h10 += 1.0;
+            else if(bestPitch == 11) h11 += 1.0;
+            else if(bestPitch == 12) h12 += 1.0;
         }
         
         // Find mode (most voted pitch)
-        float maxVotes = 0.0;
+        float maxVotes = h3;
         int detectedPitch = 3;
-        for(int i = 0; i < 10; i++) {
-            if(histogram[i] > maxVotes) {
-                maxVotes = histogram[i];
-                detectedPitch = i + 3;
-            }
-        }
+        if(h4 > maxVotes) { maxVotes = h4; detectedPitch = 4; }
+        if(h5 > maxVotes) { maxVotes = h5; detectedPitch = 5; }
+        if(h6 > maxVotes) { maxVotes = h6; detectedPitch = 6; }
+        if(h7 > maxVotes) { maxVotes = h7; detectedPitch = 7; }
+        if(h8 > maxVotes) { maxVotes = h8; detectedPitch = 8; }
+        if(h9 > maxVotes) { maxVotes = h9; detectedPitch = 9; }
+        if(h10 > maxVotes) { maxVotes = h10; detectedPitch = 10; }
+        if(h11 > maxVotes) { maxVotes = h11; detectedPitch = 11; }
+        if(h12 > maxVotes) { maxVotes = h12; detectedPitch = 12; }
         
         // Calculate scanline count from detected pitch
         float detectedCount = global.SourceSize.y / float(detectedPitch);
@@ -231,8 +240,8 @@ void main() {
             text += renderNum(detectedCount, px, vec2(10.0, 10.0), digitW, digitH, 4);
             // Row 2: Detected pitch (in pixels)
             text += renderNum(float(detectedPitch), px, vec2(10.0, 45.0), digitW, digitH, 2);
-            // Row 3: Confidence (max votes / total columns)
-            text += renderNum(maxVotes / float(NUM_COLUMNS) * 100.0, px, vec2(10.0, 80.0), digitW, digitH, 3);
+            // Row 3: Confidence (max votes / 16 columns * 100)
+            text += renderNum(maxVotes / 16.0 * 100.0, px, vec2(10.0, 80.0), digitW, digitH, 3);
             
             debugColor = mix(debugColor, vec3(0.0, 1.0, 0.5), text);
             FragColor = vec4(debugColor, 1.0);
