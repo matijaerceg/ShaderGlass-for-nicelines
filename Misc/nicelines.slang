@@ -1,7 +1,7 @@
 #version 450
 
 // === PARAMETERS ===
-#pragma parameter COMPARE_MODE "[v22] Half Screen Compare" 0.0 0.0 1.0 1.0
+#pragma parameter COMPARE_MODE "[v22]  Half Screen Compare" 0.0 0.0 1.0 1.0
 #pragma parameter SCANLINE_MODE "Num Scanlines (224p / 240p / Manual)" 0.0 0.0 2.0 1.0
 #pragma parameter MANUAL_LINES "Num for Manual Mode" 360.0 120.0 480.0 5.0
 #pragma parameter FINETUNE_LINES "Num Scanlines Finetune" 0.0 -5.0 5.0 1.0
