@@ -175,20 +175,18 @@ void main() {
         
         // SECTION 2: Debug readout (top-left area)
         if(px.x < 300.0 && px.y < 50.0) {
-            vec3 debugColor = vec3(0.0);
-            debugColor.r = prevState.r; // Red channel = frameCount/256
-            debugColor.g = prevState.a; // Alpha channel = frameCount/256  
-            debugColor.b = frameCount / 256.0; // Current incremented value
+            // Show RAW feedback values as color - this proves texture is being read
+            vec3 debugColor = prevState.rgb * 10.0; // Amplify to make visible
             
             // Show numeric readout
             float digitH = 14.0;
             float digitW = digitH * 0.6;
             float text = 0.0;
             
-            // Row 1: Previous frame's red channel * 1000
-            text += renderNum(prevState.r * 1000.0, px, vec2(5.0, 5.0), digitW, digitH, 3);
-            // Row 2: Current frameCount (should be +1 from row 1)
-            text += renderNum(frameCount, px, vec2(5.0, 25.0), digitW, digitH, 3);
+            // Row 1: Raw R channel * 1000 (should increment: 0, 3.9, 7.8, 11.7...)
+            text += renderNum(prevState.r * 1000.0, px, vec2(5.0, 5.0), digitW, digitH, 4);
+            // Row 2: Current frameCount (should increment: 0, 1, 2, 3...)
+            text += renderNum(frameCount, px, vec2(5.0, 25.0), digitW, digitH, 4);
             
             debugColor = mix(debugColor, vec3(1.0, 1.0, 0.0), text);
             FragColor = vec4(debugColor, 1.0);
