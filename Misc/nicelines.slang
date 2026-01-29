@@ -16,6 +16,7 @@
 
 // === TRIAD PHOSPHOR PARAMETERS ===
 #pragma parameter TRIAD_MODE "Phosphor Triad Mode (0=Off, 1=Collapse, 2=Lottes)" 1.0 0.0 2.0 1.0
+#pragma parameter TRIAD_BOOST "Collapse: Brightness Boost" 3.3 2.5 4.5 0.1
 #pragma parameter TRIAD_HEIGHT "Triad Cell Height (pixels)" 1.0 1.0 16.0 1.0
 #pragma parameter TRIAD_OFFSET "Zigzag Offset Amount" 0.0 0.0 1.0 0.1
 #pragma parameter TRIAD_DARK "Lottes: Non-lit Phosphor Darkness" 0.5 0.0 1.0 0.05
@@ -39,6 +40,7 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float COMPARE_MODE;
     float DEBUG_INFO;
     float TRIAD_MODE;
+    float TRIAD_BOOST;
     float TRIAD_HEIGHT;
     float TRIAD_OFFSET;
     float TRIAD_DARK;
@@ -395,18 +397,23 @@ void main() {
         
         if(abs(global.TRIAD_MODE - 1.0) < 0.1) {
             // === COLLAPSE MODE ===
-            // Each phosphor only emits its channel, boosted 3x to maintain brightness.
+            // Each phosphor only emits its channel, boosted to maintain brightness.
             // Overflow from clipping redistributes to adjacent phosphors.
+            //
+            // Boost > 3.0 compensates for perceptual effects:
+            // - Spatial averaging isn't perfect at typical viewing distances
+            // - High local contrast makes areas appear darker (contrast masking)
+            // - 3.0 = mathematically correct, 3.3+ = perceptually matched
+            
+            float boost = global.TRIAD_BOOST;
             
             for(int ch = 0; ch < 3; ch++) {
                 float c = finalColor[ch];
-                float totalEnergy = c * 3.0;
+                float totalEnergy = c * boost;
                 
                 if(rgbIndex == ch) {
-                    // Primary phosphor: emit as much as possible (up to 1.0)
                     triadColor[ch] = min(totalEnergy, 1.0);
                 } else {
-                    // Other phosphors: receive overflow from primary
                     float overflow = max(0.0, totalEnergy - 1.0);
                     triadColor[ch] = overflow * 0.5;
                 }
