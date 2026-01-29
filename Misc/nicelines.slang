@@ -1,19 +1,17 @@
 #version 450
 
 // === PARAMETERS ===
-#pragma parameter COMPARE_MODE "[v12] On/Off Half Screen Compare Mode" 0.0 0.0 1.0 1.0
-#pragma parameter SCANLINE_MODE "Mode (0=224p, 1=240p, 2=Manual, 3=Off)" 0.0 0.0 3.0 1.0
-#pragma parameter MANUAL_LINES "Manual Scanline Count" 360.0 120.0 480.0 10.0
-#pragma parameter AUTO_LINES "Auto Adjust Scanlines for Resolution (Off for 2D games, On for 3D games)" 0.0 0.0 1.0 1.0
+#pragma parameter COMPARE_MODE "[v14] Half Screen Compare" 0.0 0.0 1.0 1.0
+#pragma parameter SCANLINE_MODE "Mode (224p / 240p / Manual)" 0.0 0.0 2.0 1.0
+#pragma parameter MANUAL_LINES "Manual Mode Scanline Count" 360.0 120.0 480.0 10.0
+#pragma parameter AUTO_LINES "Auto Adjust Scanlines for Resolution (Suggest Off for 2D games, On for 3D; On makes scanlines a multiple of resolution)" 0.0 0.0 1.0 1.0
 #pragma parameter BLUR_OFFSET "Downscaling (Lower = Softer)" 0.04 -0.04 0.12 0.01
-#pragma parameter BASE_WIDTH "Scanline Thickness Baseline" 0.3 0.2 0.8 0.05
-#pragma parameter MIN_WIDTH "Scanline Thickness Min (dark)" 0.5 0.1 0.5 0.05
-#pragma parameter H_BLUR "Horizontal Blur" 1.0 0.0 4.0 0.1
+#pragma parameter H_BLUR "Horizontal Blur (worn out tube look)" 1.0 0.0 8.0 0.1
 
 // === SUBPIXEL NOISE PARAMETERS ===
 #pragma parameter SUBPIXEL_NOISE "Subpixel Noise (pseudo Shadow Mask effect)" 1.0 0.0 1.0 1.0
 #pragma parameter NOISE_SWAP_RANGE "Output resolution at which Subpixel noise doubles intensity" 960.0 360.0 2160.0 10.0
-#pragma parameter SHIMMER_NOISE "Shimmer Noise (randomize pattern each frame)" 0.0 0.0 1.0 1.0
+#pragma parameter SHIMMER_NOISE "Shimmer (signal/processing noise look)" 0.0 0.0 1.0 1.0
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
@@ -26,8 +24,6 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float MANUAL_LINES;
     float AUTO_LINES;
     float BLUR_OFFSET;
-    float BASE_WIDTH;
-    float MIN_WIDTH;
     float H_BLUR;
     float SUBPIXEL_NOISE;
     float NOISE_SWAP_RANGE;
@@ -114,14 +110,13 @@ vec3 sampleWithBlur(vec2 uv, float effectiveScale) {
 }
 
 void main() {
-    float baseWidth = global.BASE_WIDTH;
-    float minWidth = global.MIN_WIDTH;
-    float maxWidth = 1.0;  // Hardcoded max thickness
+    float baseWidth = 0.3;   // Hardcoded thickness baseline
+    float minWidth = 0.5;    // Hardcoded thickness min (dark)
+    float maxWidth = 1.0;    // Hardcoded max thickness
     
     // Determine target scanline count based on mode
     float targetLines;
     int mode = int(global.SCANLINE_MODE + 0.5);
-    bool scanlinesOff = (mode == 3);
     if(mode == 0) {
         targetLines = 224.0;
     } else if(mode == 1) {
@@ -217,17 +212,13 @@ void main() {
     float scanlineWidth = calcScanlineWidth(color, baseWidth, minWidth, maxWidth);
     vec3 outputColor = clamp(color / scanlineWidth, 0.0, 1.0);
     
-    // Scanline mask (or bypass if scanlines off)
+    // Scanline mask
     float scanlineMask = 1.0;
     vec3 finalColor;
-    if(scanlinesOff) {
-        finalColor = color;  // No scanlines, just the source color
-    } else {
-        float halfGap = (1.0 - scanlineWidth) * 0.5;
-        scanlineMask = smoothstep(halfGap - edgeSoftness, halfGap + edgeSoftness, withinScanline) *
-                       smoothstep(1.0 - halfGap + edgeSoftness, 1.0 - halfGap - edgeSoftness, withinScanline);
-        finalColor = outputColor * scanlineMask;
-    }
+    float halfGap = (1.0 - scanlineWidth) * 0.5;
+    scanlineMask = smoothstep(halfGap - edgeSoftness, halfGap + edgeSoftness, withinScanline) *
+                   smoothstep(1.0 - halfGap + edgeSoftness, 1.0 - halfGap - edgeSoftness, withinScanline);
+    finalColor = outputColor * scanlineMask;
     
     // Horizontal blur on final output (cheap 5-tap tent filter)
     if(global.H_BLUR > 0.001) {
