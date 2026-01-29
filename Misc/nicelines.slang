@@ -204,13 +204,13 @@ void main() {
             // Top bar: frame counter visualization (wraps at 256)
             float barHeight = 20.0;
             if(px.y < 70.0 && px.y > 50.0) {
-            float progress = frameCount / 256.0;
-            if(vTexCoord.x < progress) {
-                debugColor = vec3(0.0, 1.0, 0.5); // Cyan bar
-            } else {
-                debugColor = vec3(0.2, 0.2, 0.2); // Dark background
+                float progress = frameCount / 256.0;
+                if(vTexCoord.x < progress) {
+                    debugColor = vec3(0.0, 1.0, 0.5); // Cyan bar
+                } else {
+                    debugColor = vec3(0.2, 0.2, 0.2); // Dark background
+                }
             }
-        }
         
         // Numeric display: frame count using 7-segment display
         float digitH = max(24.0, global.OutputSize.y / 25.0);
