@@ -1,26 +1,19 @@
 #version 450
 
 // === PARAMETERS ===
-#pragma parameter SCANLINE_MODE "[v10] Mode (0=224p, 1=240p, 2=Manual, 3=Off)" 0.0 0.0 3.0 1.0
-#pragma parameter MANUAL_LINES "Manual Scanline Count" 240.0 120.0 480.0 10.0
-#pragma parameter AUTO_LINES "Auto Adjust Num Scanlines for Resolution" 0.0 0.0 1.0 1.0
-#pragma parameter BLUR_OFFSET "Downscaling Resolution" 0.04 -0.04 0.12 0.01
+#pragma parameter COMPARE_MODE "[v12] On/Off Half Screen Compare Mode" 0.0 0.0 1.0 1.0
+#pragma parameter SCANLINE_MODE "Mode (0=224p, 1=240p, 2=Manual, 3=Off)" 0.0 0.0 3.0 1.0
+#pragma parameter MANUAL_LINES "Manual Scanline Count" 360.0 120.0 480.0 10.0
+#pragma parameter AUTO_LINES "Auto Adjust Scanlines for Resolution (Off for 2D games, On for 3D games)" 0.0 0.0 1.0 1.0
+#pragma parameter BLUR_OFFSET "Downscaling (Lower = Softer)" 0.04 -0.04 0.12 0.01
 #pragma parameter BASE_WIDTH "Scanline Thickness Baseline" 0.3 0.2 0.8 0.05
 #pragma parameter MIN_WIDTH "Scanline Thickness Min (dark)" 0.5 0.1 0.5 0.05
-#pragma parameter MAX_WIDTH "Scanline Thickness Max (bright)" 1.0 0.7 1.0 0.05
-#pragma parameter VERTICAL_SOFT "Vertical Softening" 1.0 0.0 1.0 1.0
-#pragma parameter VERTICAL_AMOUNT "Vertical Softening Amount" 1.0 0.0 1.0 0.05
 #pragma parameter H_BLUR "Horizontal Blur" 1.0 0.0 4.0 0.1
-#pragma parameter COMPARE_MODE "Half/Half" 0.0 0.0 1.0 1.0
 
 // === SUBPIXEL NOISE PARAMETERS ===
-#pragma parameter SUBPIXEL_NOISE "Subpixel Noise" 1.0 0.0 1.0 1.0
-#pragma parameter NOISE_ZIGZAG_AMP "Noise: Vertical Zigzag Amplitude" 0.0 0.0 4.0 0.25
-#pragma parameter NOISE_ZIGZAG_PITCH "Noise: Zigzag Pitch (pixels)" 6.0 2.0 24.0 1.0
-#pragma parameter NOISE_ZIGZAG_HARMONICS "Noise: Zigzag Complexity" 0.5 0.0 1.0 0.1
-#pragma parameter NOISE_SWAP_RANGE "Noise: Swap Range Breakpoint (res)" 1080.0 720.0 2160.0 60.0
-#pragma parameter NOISE_SWAP_PHASE "Noise: Swap Phase (x Scanline Height)" 0.8 0.0 2.0 0.05
-#pragma parameter NOISE_SEED "Noise: Pattern Seed" 0.0 0.0 99.0 1.0
+#pragma parameter SUBPIXEL_NOISE "Subpixel Noise (pseudo Shadow Mask effect)" 1.0 0.0 1.0 1.0
+#pragma parameter NOISE_SWAP_RANGE "Output resolution at which Subpixel noise doubles intensity" 960.0 360.0 2160.0 10.0
+#pragma parameter SHIMMER_NOISE "Shimmer Noise (randomize pattern each frame)" 0.0 0.0 1.0 1.0
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
@@ -28,24 +21,17 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     vec4 OriginalSize;
     vec4 OutputSize;
     uint FrameCount;
+    float COMPARE_MODE;
     float SCANLINE_MODE;
     float MANUAL_LINES;
     float AUTO_LINES;
     float BLUR_OFFSET;
     float BASE_WIDTH;
     float MIN_WIDTH;
-    float MAX_WIDTH;
-    float VERTICAL_SOFT;
-    float VERTICAL_AMOUNT;
     float H_BLUR;
-    float COMPARE_MODE;
     float SUBPIXEL_NOISE;
-    float NOISE_ZIGZAG_AMP;
-    float NOISE_ZIGZAG_PITCH;
-    float NOISE_ZIGZAG_HARMONICS;
     float NOISE_SWAP_RANGE;
-    float NOISE_SWAP_PHASE;
-    float NOISE_SEED;
+    float SHIMMER_NOISE;
 } global;
 
 // === VERTEX STAGE ===
@@ -130,7 +116,7 @@ vec3 sampleWithBlur(vec2 uv, float effectiveScale) {
 void main() {
     float baseWidth = global.BASE_WIDTH;
     float minWidth = global.MIN_WIDTH;
-    float maxWidth = global.MAX_WIDTH;
+    float maxWidth = 1.0;  // Hardcoded max thickness
     
     // Determine target scanline count based on mode
     float targetLines;
@@ -159,13 +145,10 @@ void main() {
     // Pixels per scanline (for subpixel noise phase calculation)
     float pixelsPerScanline = global.OutputSize.y / targetLines;
     
-    // Edge softness calculation
+    // Edge softness calculation (hardcoded to full softening)
     float baseEdgeSoftness = 0.05;
-    float edgeSoftness = baseEdgeSoftness;
-    if(global.VERTICAL_SOFT > 0.5) {
-        float curvedAmount = pow(global.VERTICAL_AMOUNT, 2.5);
-        edgeSoftness = baseEdgeSoftness + curvedAmount * 0.25;
-    }
+    float curvedAmount = pow(1.0, 2.5);  // VERTICAL_AMOUNT = 1.0
+    float edgeSoftness = baseEdgeSoftness + curvedAmount * 0.25;
     
     // Compare mode: right half shows original
     if(global.COMPARE_MODE > 0.5 && vTexCoord.x > 0.5) {
@@ -179,34 +162,15 @@ void main() {
     vec2 srcPx = px;
     
     if(global.SUBPIXEL_NOISE > 0.5) {
-        float seed = global.NOISE_SEED;
-        
-        // --- VERTICAL ZIGZAG ---
-        if(global.NOISE_ZIGZAG_AMP > 0.01) {
-            float pitch = max(2.0, global.NOISE_ZIGZAG_PITCH);
-            float phase = px.x * 6.28318 / pitch;
-            
-            // Base zigzag (sine wave)
-            float zigzag = sin(phase + seed);
-            
-            // Add harmonics for more interesting pattern
-            float harm = global.NOISE_ZIGZAG_HARMONICS;
-            if(harm > 0.01) {
-                zigzag += harm * 0.5 * sin(phase * 2.0 + seed * 1.7);
-                zigzag += harm * 0.3 * sin(phase * 3.0 + seed * 2.3);
-                zigzag += harm * 0.2 * sin(phase * 5.0 + seed * 3.1);
-                zigzag /= (1.0 + harm);
-            }
-            
-            srcPx.y += zigzag * global.NOISE_ZIGZAG_AMP;
-        }
+        // Seed: random each frame if shimmer enabled, otherwise fixed
+        float seed = (global.SHIMMER_NOISE > 0.5) ? float(global.FrameCount) : 0.0;
         
         // --- HORIZONTAL SWAP ---
         // Swap range is 2 at/above breakpoint resolution, 1 below
         float swapRange = (global.OutputSize.y >= global.NOISE_SWAP_RANGE) ? 2.0 : 1.0;
         if(swapRange > 0.5) {
-            // Phase height is a factor of scanline pitch, rounded to integer fat-pixels
-            float phaseH = max(1.0, floor(pixelsPerScanline * global.NOISE_SWAP_PHASE + 0.5));
+            // Phase height is a factor of scanline pitch, rounded to integer fat-pixels (locked at 0.8)
+            float phaseH = max(1.0, floor(pixelsPerScanline * 0.8 + 0.5));
             
             float groupWidth = swapRange * 2.0;
             float groupIdx = floor(px.x / groupWidth);
