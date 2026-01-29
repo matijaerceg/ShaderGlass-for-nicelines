@@ -142,7 +142,6 @@ float calcScanlineWidth(vec3 color, float baseWidth, float minWidth, float maxWi
 }
 
 void main() {
-void main() {
     // === PIXEL COUNTING WIZARD MODE ===
     if(global.PIXEL_WIZARD > 0.5) {
         // === AUTO-DETECT SCANLINE PITCH ===
