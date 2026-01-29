@@ -15,11 +15,20 @@
 #pragma parameter DEBUG_INFO "Debug Info" 0.0 0.0 1.0 1.0
 
 // === TRIAD PHOSPHOR PARAMETERS ===
-#pragma parameter TRIAD_MODE "Phosphor Triad Mode (0=Off, 1=Collapse, 2=Lottes)" 1.0 0.0 2.0 1.0
+#pragma parameter TRIAD_MODE "Pixel Mode (0=Off, 1=Collapse, 2=Lottes, 3=Noise)" 1.0 0.0 3.0 1.0
 #pragma parameter TRIAD_BOOST "Collapse: Brightness Boost" 3.3 2.5 4.5 0.1
 #pragma parameter TRIAD_HEIGHT "Triad Cell Height (pixels)" 1.0 1.0 16.0 1.0
 #pragma parameter TRIAD_OFFSET "Zigzag Offset Amount" 0.0 0.0 1.0 0.1
 #pragma parameter TRIAD_DARK "Lottes: Non-lit Phosphor Darkness" 0.5 0.0 1.0 0.05
+
+// === SUBPIXEL NOISE PARAMETERS (Mode 3) ===
+#pragma parameter NOISE_ZIGZAG_AMP "Noise: Vertical Zigzag Amplitude" 1.0 0.0 4.0 0.25
+#pragma parameter NOISE_ZIGZAG_PITCH "Noise: Zigzag Pitch (pixels)" 6.0 2.0 24.0 1.0
+#pragma parameter NOISE_ZIGZAG_HARMONICS "Noise: Zigzag Complexity" 0.5 0.0 1.0 0.1
+#pragma parameter NOISE_SWAP_RANGE "Noise: Horizontal Swap Range" 2.0 0.0 8.0 1.0
+#pragma parameter NOISE_SWAP_PHASE "Noise: Swap Pattern Height" 4.0 1.0 16.0 1.0
+#pragma parameter NOISE_DIAGONAL "Noise: Diagonal Shear" 0.0 0.0 2.0 0.25
+#pragma parameter NOISE_SEED "Noise: Pattern Seed" 0.0 0.0 99.0 1.0
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
@@ -44,6 +53,13 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float TRIAD_HEIGHT;
     float TRIAD_OFFSET;
     float TRIAD_DARK;
+    float NOISE_ZIGZAG_AMP;
+    float NOISE_ZIGZAG_PITCH;
+    float NOISE_ZIGZAG_HARMONICS;
+    float NOISE_SWAP_RANGE;
+    float NOISE_SWAP_PHASE;
+    float NOISE_DIAGONAL;
+    float NOISE_SEED;
 } global;
 
 // === VERTEX STAGE ===
@@ -468,6 +484,111 @@ void main() {
             }
             
             triadColor = clamp(triadColor, 0.0, 1.0);
+            
+        } else if(abs(global.TRIAD_MODE - 3.0) < 0.1) {
+            // === SUBPIXEL NOISE MODE ===
+            // Creates texture by displacing pixels without changing colors.
+            // All original pixels remain - just rearranged for visual texture.
+            
+            vec2 srcPx = px;  // Source pixel to sample from
+            float seed = global.NOISE_SEED;
+            
+            // --- VERTICAL ZIGZAG ---
+            // Primary sine wave + harmonics for complex zigzag pattern
+            if(global.NOISE_ZIGZAG_AMP > 0.01) {
+                float pitch = max(2.0, global.NOISE_ZIGZAG_PITCH);
+                float phase = px.x * 6.28318 / pitch;
+                
+                // Base zigzag (sine wave)
+                float zigzag = sin(phase + seed);
+                
+                // Add harmonics for more interesting pattern
+                float harm = global.NOISE_ZIGZAG_HARMONICS;
+                if(harm > 0.01) {
+                    zigzag += harm * 0.5 * sin(phase * 2.0 + seed * 1.7);
+                    zigzag += harm * 0.3 * sin(phase * 3.0 + seed * 2.3);
+                    zigzag += harm * 0.2 * sin(phase * 5.0 + seed * 3.1);
+                    zigzag /= (1.0 + harm);  // Normalize
+                }
+                
+                srcPx.y += zigzag * global.NOISE_ZIGZAG_AMP;
+            }
+            
+            // --- HORIZONTAL SWAP ---
+            // Deterministic pixel permutation that varies by row
+            if(global.NOISE_SWAP_RANGE > 0.5) {
+                float swapRange = global.NOISE_SWAP_RANGE;
+                float phaseH = max(1.0, global.NOISE_SWAP_PHASE);
+                
+                // Which swap group are we in? (groups of swapRange*2 pixels)
+                float groupWidth = swapRange * 2.0;
+                float groupIdx = floor(px.x / groupWidth);
+                float withinGroup = mod(px.x, groupWidth);
+                
+                // Row-dependent phase shift (pattern changes vertically)
+                float rowPhase = floor(px.y / phaseH);
+                float rowOffset = mod(rowPhase + seed, 3.0);
+                
+                // Swap pattern: reverse pixel order within group, with row variation
+                float swapOffset = 0.0;
+                if(mod(rowPhase, 2.0) < 1.0) {
+                    // Even rows: mirror within group
+                    swapOffset = groupWidth - 1.0 - 2.0 * withinGroup;
+                } else {
+                    // Odd rows: shift by half group
+                    swapOffset = mod(withinGroup + swapRange, groupWidth) - withinGroup;
+                }
+                
+                // Additional chaos based on position
+                float chaos = sin((groupIdx + rowPhase) * 2.718 + seed) * swapRange * 0.5;
+                swapOffset += chaos;
+                
+                srcPx.x += swapOffset;
+            }
+            
+            // --- DIAGONAL SHEAR ---
+            // Adds angular displacement based on position
+            if(global.NOISE_DIAGONAL > 0.01) {
+                float diag = global.NOISE_DIAGONAL;
+                // Shear direction alternates in blocks
+                float blockSize = 8.0;
+                float blockX = floor(px.x / blockSize);
+                float blockY = floor(px.y / blockSize);
+                float shearDir = mod(blockX + blockY + seed, 2.0) < 1.0 ? 1.0 : -1.0;
+                
+                srcPx.x += shearDir * diag * mod(px.y, blockSize) / blockSize;
+                srcPx.y += shearDir * diag * mod(px.x, blockSize) / blockSize * 0.5;
+            }
+            
+            // --- SAMPLE FROM DISPLACED POSITION ---
+            // Convert back to UV and sample the pre-triad finalColor
+            // We need to recalculate the scanline output for the displaced position
+            vec2 displacedUV = srcPx / global.OutputSize.xy;
+            displacedUV = clamp(displacedUV, vec2(0.0), vec2(1.0));
+            
+            // Recalculate scanline for displaced position
+            float dispDistFromCenter = displacedUV.y - 0.5;
+            float dispScanlineOffset = dispDistFromCenter * targetLines;
+            float dispScanlinePos = dispScanlineOffset;
+            float dispScanlineIndex = floor(dispScanlinePos);
+            float dispWithinScanline = fract(dispScanlinePos);
+            
+            float dispSampleScanlinePos = dispScanlineIndex + 0.5;
+            float dispSampleDistFromCenter = dispSampleScanlinePos / targetLines;
+            vec2 dispSampleUV = vec2(displacedUV.x, clamp(0.5 + dispSampleDistFromCenter, 0.0, 1.0));
+            
+            // Sample source
+            vec3 dispColor = SrgbToLinear3(texture(Source, dispSampleUV).rgb);
+            
+            // Apply scanline width and mask
+            float dispScanlineWidth = calcScanlineWidth(dispColor, baseWidth, minWidth, maxWidth);
+            vec3 dispOutputColor = clamp(dispColor / dispScanlineWidth, 0.0, 1.0);
+            
+            float dispHalfGap = (1.0 - dispScanlineWidth) * 0.5;
+            float dispMask = smoothstep(dispHalfGap - edgeSoftness, dispHalfGap + edgeSoftness, dispWithinScanline) *
+                             smoothstep(1.0 - dispHalfGap + edgeSoftness, 1.0 - dispHalfGap - edgeSoftness, dispWithinScanline);
+            
+            triadColor = dispOutputColor * dispMask;
             
         } else {
             triadColor = finalColor;
