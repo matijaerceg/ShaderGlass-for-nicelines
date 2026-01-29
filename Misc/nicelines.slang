@@ -14,7 +14,12 @@
 #pragma parameter COMPARE_MODE "Half/Half" 0.0 0.0 1.0 1.0
 #pragma parameter DEBUG_INFO "Debug Info" 0.0 0.0 1.0 1.0
 
-// === UBO ===
+// === TRIAD PHOSPHOR PARAMETERS ===
+#pragma parameter TRIAD_MODE "Phosphor Triad Mode (0=Off, 1=Collapse, 2=Lottes)" 0.0 0.0 2.0 1.0
+#pragma parameter TRIAD_HEIGHT "Triad Cell Height (pixels)" 4.0 1.0 16.0 1.0
+#pragma parameter TRIAD_OFFSET "Zigzag Offset Amount" 0.5 0.0 1.0 0.1
+#pragma parameter TRIAD_DARK "Lottes: Non-lit Phosphor Darkness" 0.125 0.0 0.5 0.025
+
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
     vec4 SourceSize;
@@ -33,6 +38,10 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float H_BLUR;
     float COMPARE_MODE;
     float DEBUG_INFO;
+    float TRIAD_MODE;
+    float TRIAD_HEIGHT;
+    float TRIAD_OFFSET;
+    float TRIAD_DARK;
 } global;
 
 // === VERTEX STAGE ===
@@ -373,6 +382,97 @@ void main() {
     if(global.COMPARE_MODE > 0.5 && abs(vTexCoord.x - 0.5) < 0.002) {
         finalColor = vec3(0.0);
     }
-    
+
+    // === PHOSPHOR TRIAD MODES ===
+    // 0 = off, 1 = spatial collapse (energy-conserving), 2 = Lottes (adaptive boost)
+    // Note: Triad sampling bypasses H_BLUR for performance; applies scanlines directly
+    if(global.TRIAD_MODE > 0.1) {
+        vec2 px = vTexCoord * global.OutputSize.xy;
+        float triadH = max(1.0, global.TRIAD_HEIGHT);
+        int rgbIndex = int(mod(floor(px.x), 3.0));
+        int triadCol = int(floor(px.x / 3.0));
+        float yOffset = 0.0;
+        if(mod(float(triadCol), 2.0) >= 1.0) {
+            yOffset = triadH * global.TRIAD_OFFSET;
+        }
+        float adjustedY = px.y + yOffset;
+        int triadRow = int(floor(adjustedY / triadH));
+        float cellLeft = float(triadCol) * 3.0;
+        float cellTop = float(triadRow) * triadH - yOffset;
+        vec3 avgColor = vec3(0.0);
+        float sampleCount = 0.0;
+        int samplesX = 3;
+        int samplesY = max(1, int(triadH));
+        for(int sy = 0; sy < 16; sy++) {
+            if(sy >= samplesY) break;
+            for(int sx = 0; sx < samplesX; sx++) {
+                float sampleX = cellLeft + float(sx) + 0.5;
+                float sampleY = cellTop + float(sy) + 0.5;
+                vec2 triadSampleUV = vec2(sampleX, sampleY) / global.OutputSize.xy;
+                triadSampleUV = clamp(triadSampleUV, vec2(0.0), vec2(1.0));
+                // Use the same scanline logic as above for each sample
+                float sampleDistFromCenter = triadSampleUV.y - 0.5;
+                float sampleScanlineOffset = sampleDistFromCenter * targetLines;
+                float sampleScanlinePos = sampleScanlineOffset;
+                float sampleScanlineIndex = floor(sampleScanlinePos);
+                float sampleWithinScanline = fract(sampleScanlinePos);
+                float sampleScanlineCenterPos = sampleScanlineIndex + 0.5;
+                float sampleScanlineCenterDistFromCenter = sampleScanlineCenterPos / targetLines;
+                vec2 srcSampleUV = vec2(triadSampleUV.x, clamp(0.5 + sampleScanlineCenterDistFromCenter, 0.0, 1.0));
+                vec3 srcColor = SrgbToLinear3(texture(Source, srcSampleUV).rgb);
+                float sampleScanlineWidth = calcScanlineWidth(srcColor, baseWidth, minWidth, maxWidth);
+                vec3 sampleOutputColor = clamp(srcColor / sampleScanlineWidth, 0.0, 1.0);
+                float sampleHalfGap = (1.0 - sampleScanlineWidth) * 0.5;
+                float sampleEdgeSoftness = baseEdgeSoftness;
+                if(global.VERTICAL_SOFT > 0.5) {
+                    float curvedAmount = pow(global.VERTICAL_AMOUNT, 2.5);
+                    sampleEdgeSoftness = baseEdgeSoftness + curvedAmount * 0.25;
+                }
+                float sampleMask = smoothstep(sampleHalfGap - sampleEdgeSoftness, sampleHalfGap + sampleEdgeSoftness, sampleWithinScanline) *
+                                   smoothstep(1.0 - sampleHalfGap + sampleEdgeSoftness, 1.0 - sampleHalfGap - sampleEdgeSoftness, sampleWithinScanline);
+                avgColor += sampleOutputColor * sampleMask;
+                sampleCount += 1.0;
+            }
+        }
+        avgColor /= max(1.0, sampleCount);
+
+        vec3 triadColor = vec3(0.0);
+        if(abs(global.TRIAD_MODE - 1.0) < 0.1) {
+            // === User's spatial collapse approach ===
+            for(int ch = 0; ch < 3; ch++) {
+                float c = avgColor[ch];
+                float primaryOut, neighborOut;
+                if(c >= 1.0/3.0) {
+                    primaryOut = 1.0;
+                    neighborOut = (c * 3.0 - 1.0) * 0.5;
+                } else {
+                    primaryOut = c * 3.0;
+                    neighborOut = 0.0;
+                }
+                if(rgbIndex == ch) {
+                    triadColor[ch] = primaryOut;
+                } else {
+                    triadColor[ch] = neighborOut;
+                }
+            }
+        } else if(abs(global.TRIAD_MODE - 2.0) < 0.1) {
+            // === Lottes' adaptive approach ===
+            float dark = global.TRIAD_DARK;
+            float lim = 1.0 / ((1.0/3.0) + (2.0/3.0) * dark);
+            vec3 colD = avgColor * avgColor * dark;
+            vec3 amp = 1.0 / (vec3(lim/3.0) + vec3(lim*2.0/3.0) * avgColor);
+            vec3 col = avgColor * amp;
+            colD *= amp;
+            triadColor = colD;
+            if(rgbIndex == 0) triadColor.r = col.r;
+            if(rgbIndex == 1) triadColor.g = col.g;
+            if(rgbIndex == 2) triadColor.b = col.b;
+            triadColor = clamp(triadColor, 0.0, 1.0);
+        } else {
+            triadColor = avgColor;
+        }
+        finalColor = triadColor;
+    }
+
     FragColor = vec4(LinearToSrgb3(finalColor), 1.0);
 }
