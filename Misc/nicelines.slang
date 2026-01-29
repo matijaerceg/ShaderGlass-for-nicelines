@@ -1,25 +1,25 @@
 #version 450
 
 // === PARAMETERS ===
-#pragma parameter SCANLINE_MODE "Mode (0=224p, 1=240p, 2=Manual)" 0.0 0.0 2.0 1.0
+#pragma parameter SCANLINE_MODE "Mode (0=224p, 1=240p, 2=Manual, 3=Off)" 0.0 0.0 3.0 1.0
 #pragma parameter MANUAL_LINES "Manual Scanline Count" 240.0 120.0 480.0 10.0
 #pragma parameter AUTO_LINES "Auto Adjust Num Scanlines for Resolution" 0.0 0.0 1.0 1.0
 #pragma parameter BLUR_OFFSET "Downscaling Resolution" 0.04 -0.04 0.12 0.01
 #pragma parameter BASE_WIDTH "Scanline Thickness Baseline" 0.3 0.2 0.8 0.05
 #pragma parameter MIN_WIDTH "Scanline Thickness Min (dark)" 0.5 0.1 0.5 0.05
 #pragma parameter MAX_WIDTH "Scanline Thickness Max (bright)" 1.0 0.7 1.0 0.05
-#pragma parameter VERTICAL_SOFT "Vertical Softening" 0.0 0.0 1.0 1.0
-#pragma parameter VERTICAL_AMOUNT "Vertical Softening Amount" 0.5 0.0 1.0 0.05
+#pragma parameter VERTICAL_SOFT "Vertical Softening" 1.0 0.0 1.0 1.0
+#pragma parameter VERTICAL_AMOUNT "Vertical Softening Amount" 1.0 0.0 1.0 0.05
 #pragma parameter H_BLUR "Horizontal Blur" 1.0 0.0 4.0 0.1
 #pragma parameter COMPARE_MODE "Half/Half" 0.0 0.0 1.0 1.0
 
 // === SUBPIXEL NOISE PARAMETERS ===
 #pragma parameter SUBPIXEL_NOISE "Subpixel Noise" 1.0 0.0 1.0 1.0
-#pragma parameter NOISE_ZIGZAG_AMP "Noise: Vertical Zigzag Amplitude" 1.0 0.0 4.0 0.25
+#pragma parameter NOISE_ZIGZAG_AMP "Noise: Vertical Zigzag Amplitude" 0.0 0.0 4.0 0.25
 #pragma parameter NOISE_ZIGZAG_PITCH "Noise: Zigzag Pitch (pixels)" 6.0 2.0 24.0 1.0
 #pragma parameter NOISE_ZIGZAG_HARMONICS "Noise: Zigzag Complexity" 0.5 0.0 1.0 0.1
-#pragma parameter NOISE_SWAP_RANGE "Noise: Horizontal Swap Range" 2.0 0.0 8.0 1.0
-#pragma parameter NOISE_SWAP_PHASE "Noise: Swap Pattern Height" 4.0 1.0 16.0 1.0
+#pragma parameter NOISE_SWAP_RANGE "Noise: Horizontal Swap Range" 2.0 0.0 2.0 1.0
+#pragma parameter NOISE_SWAP_PHASE "Noise: Swap Phase (x Scanline Height)" 1.0 0.25 2.0 0.25
 #pragma parameter NOISE_SEED "Noise: Pattern Seed" 0.0 0.0 99.0 1.0
 
 layout(std140, set = 0, binding = 0) uniform UBO {
@@ -135,6 +135,7 @@ void main() {
     // Determine target scanline count based on mode
     float targetLines;
     int mode = int(global.SCANLINE_MODE + 0.5);
+    bool scanlinesOff = (mode == 3);
     if(mode == 0) {
         targetLines = 224.0;
     } else if(mode == 1) {
@@ -154,6 +155,9 @@ void main() {
     // Source blur settings
     float baselineScale = targetLines / global.SourceSize.y;
     float effectiveScale = clamp(baselineScale + global.BLUR_OFFSET, 0.02, 1.0);
+    
+    // Pixels per scanline (for subpixel noise phase calculation)
+    float pixelsPerScanline = global.OutputSize.y / targetLines;
     
     // Edge softness calculation
     float baseEdgeSoftness = 0.05;
@@ -200,7 +204,8 @@ void main() {
         // --- HORIZONTAL SWAP ---
         if(global.NOISE_SWAP_RANGE > 0.5) {
             float swapRange = global.NOISE_SWAP_RANGE;
-            float phaseH = max(1.0, global.NOISE_SWAP_PHASE);
+            // Phase height is a factor of scanline pitch, rounded to integer fat-pixels
+            float phaseH = max(1.0, floor(pixelsPerScanline * global.NOISE_SWAP_PHASE + 0.5));
             
             float groupWidth = swapRange * 2.0;
             float groupIdx = floor(px.x / groupWidth);
@@ -247,12 +252,17 @@ void main() {
     float scanlineWidth = calcScanlineWidth(color, baseWidth, minWidth, maxWidth);
     vec3 outputColor = clamp(color / scanlineWidth, 0.0, 1.0);
     
-    // Scanline mask
-    float halfGap = (1.0 - scanlineWidth) * 0.5;
-    float scanlineMask = smoothstep(halfGap - edgeSoftness, halfGap + edgeSoftness, withinScanline) *
-                         smoothstep(1.0 - halfGap + edgeSoftness, 1.0 - halfGap - edgeSoftness, withinScanline);
-    
-    vec3 finalColor = outputColor * scanlineMask;
+    // Scanline mask (or bypass if scanlines off)
+    float scanlineMask = 1.0;
+    vec3 finalColor;
+    if(scanlinesOff) {
+        finalColor = color;  // No scanlines, just the source color
+    } else {
+        float halfGap = (1.0 - scanlineWidth) * 0.5;
+        scanlineMask = smoothstep(halfGap - edgeSoftness, halfGap + edgeSoftness, withinScanline) *
+                       smoothstep(1.0 - halfGap + edgeSoftness, 1.0 - halfGap - edgeSoftness, withinScanline);
+        finalColor = outputColor * scanlineMask;
+    }
     
     // Horizontal blur on final output (cheap 5-tap tent filter)
     if(global.H_BLUR > 0.001) {
