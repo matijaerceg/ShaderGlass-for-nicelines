@@ -157,16 +157,23 @@ void main() {
     if(global.DEV_MODE > 0.5) {
         vec2 px = vTexCoord * global.OutputSize.xy;
         
-        // Read our own previous output (creates feedback loop!)
-        vec4 prevOutput = texture(PassFeedback0, vTexCoord);
+        // Read counter from a FIXED LOCATION (pixel 1,1) in previous output
+        vec2 storageCoord = vec2(1.5, 1.5) / global.OutputSize.xy;
+        vec4 prevState = texture(PassFeedback0, storageCoord);
         
-        // Increment a counter stored in red channel
-        float counter = prevOutput.r * 1000.0; // Read previous counter
-        counter = mod(counter + 1.0, 1000.0);   // Increment and wrap
+        // Increment counter stored in red channel
+        float counter = prevState.r * 1000.0;
+        counter = mod(counter + 1.0, 1000.0);
+        
+        // FIRST: Write state to storage pixel (1,1)
+        if(px.x >= 1.0 && px.x < 2.0 && px.y >= 1.0 && px.y < 2.0) {
+            FragColor = vec4(counter / 1000.0, 0.0, 0.0, 1.0);
+            return;
+        }
         
         // Top section: show counter and feedback values
         if(px.y < 100.0) {
-            vec3 debugColor = prevOutput.rgb * 5.0; // Amplify feedback to see it
+            vec3 debugColor = vec3(0.0);
             
             // Show numeric readout
             float digitH = 14.0;
@@ -178,7 +185,7 @@ void main() {
             // Row 2: FrameCount for comparison
             text += renderNum(float(global.FrameCount), px, vec2(5.0, 25.0), digitW, digitH, 5);
             // Row 3: Previous R channel * 1000
-            text += renderNum(prevOutput.r * 1000.0, px, vec2(5.0, 45.0), digitW, digitH, 5);
+            text += renderNum(prevState.r * 1000.0, px, vec2(5.0, 45.0), digitW, digitH, 5);
             
             debugColor = mix(debugColor, vec3(1.0, 1.0, 0.0), text);
             FragColor = vec4(debugColor, 1.0);
@@ -198,8 +205,8 @@ void main() {
             return;
         }
         
-        // Rest of screen: Write counter to output (this feeds back next frame!)
-        FragColor = vec4(counter / 1000.0, 0.5, 0.5, 1.0);
+        // Rest of screen: show source image dimmed
+        FragColor = vec4(texture(Source, vTexCoord).rgb * 0.3, 1.0);
         return;
     }
     
