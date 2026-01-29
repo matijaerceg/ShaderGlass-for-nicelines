@@ -1,0 +1,6 @@
+shaders = 1
+shader0 = nicelines.slang
+filter_linear0 = false
+
+alias0 = NiceLines
+feedback_pass = 0
