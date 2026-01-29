@@ -157,80 +157,52 @@ void main() {
     if(global.DEV_MODE > 0.5) {
         vec2 px = vTexCoord * global.OutputSize.xy;
         
-        // Read previous detection state from a fixed location
-        // We'll store state at pixel (1, 1) to avoid texture coordinate edge issues
-        vec4 prevState = texture(PassFeedback0, vec2(1.5 / global.OutputSize.x, 1.5 / global.OutputSize.y));
+        // BASELINE SANITY TEST: Can we read the feedback texture at all?
+        // Sample from center to avoid edge issues
+        vec4 prevState = texture(PassFeedback0, vec2(0.5, 0.5));
         
-        // Read frame counter from red channel (we write it to both R and A for redundancy)
+        // Test 1: Is PassFeedback0 bound? (it should return SOMETHING, not necessarily our data)
+        // Test 2: Can we write a known pattern and read it back?
+        
+        // Write a SOLID COLOR to the entire screen - magenta with alpha=0.5
+        // Next frame, prevState should read back (1.0, 0.0, 1.0, 0.5)
+        vec4 testColor = vec4(1.0, 0.0, 1.0, 0.5);
+        
+        // Read frame counter from red channel
         float frameCount = prevState.r * 256.0;
         
         // Increment frame counter
         frameCount = mod(frameCount + 1.0, 256.0);
         
-        // SECTION 1: Storage pixel (1,1) - Write state for next frame to read
-        if(px.x < 2.0 && px.y < 2.0) {
-            FragColor = vec4(frameCount / 256.0, 0.0, 0.0, frameCount / 256.0);
-            return;
-        }
-        
-        // SECTION 2: Debug readout (top-left area)
-        if(px.x < 300.0 && px.y < 50.0) {
-            // Show RAW feedback values as color - this proves texture is being read
-            vec3 debugColor = prevState.rgb * 10.0; // Amplify to make visible
+        // SECTION 1: Top-left - show what we READ from feedback
+        if(px.y < 100.0) {
+            vec3 debugColor = vec3(0.0);
+            
+            // Show the actual RGB values we read (amplified 10x to see small values)
+            debugColor = prevState.rgb * 10.0;
             
             // Show numeric readout
             float digitH = 14.0;
             float digitW = digitH * 0.6;
             float text = 0.0;
             
-            // Row 1: Raw R channel * 1000 (should increment: 0, 3.9, 7.8, 11.7...)
+            // Row 1: R channel (should be 1000 if feedback works)
             text += renderNum(prevState.r * 1000.0, px, vec2(5.0, 5.0), digitW, digitH, 4);
-            // Row 2: Current frameCount (should increment: 0, 1, 2, 3...)
-            text += renderNum(frameCount, px, vec2(5.0, 25.0), digitW, digitH, 4);
+            // Row 2: G channel (should be 0)
+            text += renderNum(prevState.g * 1000.0, px, vec2(5.0, 25.0), digitW, digitH, 4);
+            // Row 3: B channel (should be 1000 if feedback works)
+            text += renderNum(prevState.b * 1000.0, px, vec2(5.0, 45.0), digitW, digitH, 4);
+            // Row 4: A channel (should be 500 if feedback works)
+            text += renderNum(prevState.a * 1000.0, px, vec2(5.0, 65.0), digitW, digitH, 4);
             
             debugColor = mix(debugColor, vec3(1.0, 1.0, 0.0), text);
             FragColor = vec4(debugColor, 1.0);
             return;
         }
         
-        // SECTION 3: Visualization area (below debug, shows frame counter as progress bar)
-        if(px.y >= 50.0) {
-            vec3 debugColor = texture(Source, vTexCoord).rgb * 0.3; // Dimmed source
-            
-            // Progress bar (wraps at 256 frames)
-            if(px.y >= 50.0 && px.y < 70.0) {
-                float progress = frameCount / 256.0;
-                if(vTexCoord.x < progress) {
-                    debugColor = vec3(0.0, 1.0, 0.5); // Cyan bar
-                } else {
-                    debugColor = vec3(0.2, 0.2, 0.2); // Dark background
-                }
-            }
-            
-            // Numeric display with 7-segment style
-            float digitH = max(24.0, global.OutputSize.y / 25.0);
-            float digitW = digitH * 0.6;
-            float margin = 10.0;
-            
-            float text = 0.0;
-            text += renderNum(frameCount, px, vec2(margin, 70.0 + margin), digitW, digitH, 3);
-            
-            // Background box for numbers
-            float boxW = digitW * 4.0;
-            float boxH = digitH + margin * 2.0;
-            if(px.x < boxW && px.y > 70.0 && px.y < 70.0 + boxH) {
-                debugColor = debugColor * 0.3;
-            }
-            
-            // Text overlay
-            debugColor = mix(debugColor, vec3(0.0, 1.0, 0.5), text);
-            
-            FragColor = vec4(debugColor, 1.0);
-            return;
-        }
-        
-        // SECTION 4: Fill remaining pixels (y between 2 and 50) with black
-        FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        // SECTION 2: Rest of screen - write solid magenta for feedback test
+        // If feedback works, next frame prevState should equal testColor
+        FragColor = testColor;
         return;
     }
     
