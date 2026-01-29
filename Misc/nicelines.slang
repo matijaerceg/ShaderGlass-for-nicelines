@@ -157,26 +157,37 @@ void main() {
     if(global.DEV_MODE > 0.5) {
         vec2 px = vTexCoord * global.OutputSize.xy;
         
-        // Read previous detection state - sample from center of screen since we write everywhere
-        vec4 prevState = texture(PassFeedback0, vec2(0.5, 0.5));
+        // Read previous detection state from a fixed location
+        // We'll store state at pixel (1, 1) to avoid texture coordinate edge issues
+        vec4 prevState = texture(PassFeedback0, vec2(1.5 / global.OutputSize.x, 1.5 / global.OutputSize.y));
         
-        float frameCount = prevState.a * 256.0;
+        // Read frame counter from red channel (we write it to both R and A for redundancy)
+        float frameCount = prevState.r * 256.0;
         
-        // Debug: Show what we're reading from feedback in top-left
+        // Increment frame counter
+        frameCount = mod(frameCount + 1.0, 256.0);
+        
+        // SECTION 1: Storage pixel (1,1) - Write state for next frame to read
+        if(px.x < 2.0 && px.y < 2.0) {
+            FragColor = vec4(frameCount / 256.0, 0.0, 0.0, frameCount / 256.0);
+            return;
+        }
+        
+        // SECTION 2: Debug readout (top-left area)
         if(px.x < 300.0 && px.y < 50.0) {
             vec3 debugColor = vec3(0.0);
-            debugColor.r = prevState.a; // Raw alpha value (0-1)
-            debugColor.g = prevState.r; // Should show frameCount/256 that we wrote
-            debugColor.b = frameCount / 256.0; // What we computed from alpha
+            debugColor.r = prevState.r; // Red channel = frameCount/256
+            debugColor.g = prevState.a; // Alpha channel = frameCount/256  
+            debugColor.b = frameCount / 256.0; // Current incremented value
             
-            // Show numeric readout of all values
+            // Show numeric readout
             float digitH = 14.0;
             float digitW = digitH * 0.6;
             float text = 0.0;
             
-            // Row 1: Raw alpha value * 1000
-            text += renderNum(prevState.a * 1000.0, px, vec2(5.0, 5.0), digitW, digitH, 3);
-            // Row 2: Computed frameCount
+            // Row 1: Previous frame's red channel * 1000
+            text += renderNum(prevState.r * 1000.0, px, vec2(5.0, 5.0), digitW, digitH, 3);
+            // Row 2: Current frameCount (should be +1 from row 1)
             text += renderNum(frameCount, px, vec2(5.0, 25.0), digitW, digitH, 3);
             
             debugColor = mix(debugColor, vec3(1.0, 1.0, 0.0), text);
@@ -184,20 +195,12 @@ void main() {
             return;
         }
         
-        // CRITICAL: Read from red channel instead of alpha, since we write there too
-        frameCount = prevState.r * 256.0;
-        
-        // Increment frame counter
-        frameCount = mod(frameCount + 1.0, 256.0);
-        
-        // Only show visualization outside the top-left debug area
-        if(px.y > 50.0) {
-        
-            // Visualize frame counter as growing bar
+        // SECTION 3: Visualization area (below debug, shows frame counter as progress bar)
+        if(px.y >= 50.0) {
             vec3 debugColor = texture(Source, vTexCoord).rgb * 0.3; // Dimmed source
             
-            // Top bar: frame counter visualization (wraps at 256)
-            if(px.y < 70.0 && px.y > 50.0) {
+            // Progress bar (wraps at 256 frames)
+            if(px.y >= 50.0 && px.y < 70.0) {
                 float progress = frameCount / 256.0;
                 if(vTexCoord.x < progress) {
                     debugColor = vec3(0.0, 1.0, 0.5); // Cyan bar
@@ -205,8 +208,8 @@ void main() {
                     debugColor = vec3(0.2, 0.2, 0.2); // Dark background
                 }
             }
-        
-            // Numeric display: frame count using 7-segment display
+            
+            // Numeric display with 7-segment style
             float digitH = max(24.0, global.OutputSize.y / 25.0);
             float digitW = digitH * 0.6;
             float margin = 10.0;
@@ -225,11 +228,11 @@ void main() {
             debugColor = mix(debugColor, vec3(0.0, 1.0, 0.5), text);
             
             FragColor = vec4(debugColor, 1.0);
-        } else {
-            // Write detection state to ENTIRE OUTPUT (not just 4x1)
-            // This ensures the feedback texture captures something
-            FragColor = vec4(frameCount / 256.0, 0.0, 0.0, frameCount / 256.0);
+            return;
         }
+        
+        // SECTION 4: Fill remaining pixels (y between 2 and 50) with black
+        FragColor = vec4(0.0, 0.0, 0.0, 1.0);
         return;
     }
     
