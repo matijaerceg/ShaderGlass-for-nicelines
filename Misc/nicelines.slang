@@ -144,119 +144,30 @@ float calcScanlineWidth(vec3 color, float baseWidth, float minWidth, float maxWi
 
 void main() {
     // === PIXEL COUNTING WIZARD MODE ===
+    // Shows source dimensions to help manually count scanlines
     if(global.PIXEL_WIZARD > 0.5) {
-        // === AUTO-DETECT SCANLINE PITCH ===
-        // 1. Sample 16 columns from center 80% of image
-        // 2. For each column, test pitches 3-12 pixels and find best correlation
-        // 3. Histogram votes to find mode = detected pitch
-        // 4. scanlineCount = sourceHeight / detectedPitch
-        
-        float texelY = 1.0 / global.SourceSize.y;
-        
-        // Histogram for pitch votes (pitches 3-12) - use individual vars for GLSL compat
-        float h3 = 0.0, h4 = 0.0, h5 = 0.0, h6 = 0.0, h7 = 0.0;
-        float h8 = 0.0, h9 = 0.0, h10 = 0.0, h11 = 0.0, h12 = 0.0;
-        
-        // Sample 16 columns from center 80% (10% to 90%)
-        for(int col = 0; col < 16; col++) {
-            float xPos = 0.1 + (float(col) + 0.5) / 16.0 * 0.8;
-            
-            // Test pitches 3-12 pixels
-            float bestCorr = -99999.0;
-            int bestPitch = 3;
-            
-            for(int p = 3; p <= 12; p++) {
-                float corr = 0.0;
-                int numSamples = 0;
-                
-                // Sum correlation over center 60% of image, every 4th pixel for speed
-                for(int y = int(global.SourceSize.y * 0.2); y < int(global.SourceSize.y * 0.8) - p; y += 4) {
-                    float yUV = (float(y) + 0.5) * texelY;
-                    float yUV_offset = (float(y + p) + 0.5) * texelY;
-                    
-                    // 3-tap vertical pre-blur (0.25, 0.5, 0.25) for both samples
-                    vec3 c0 = texture(Source, vec2(xPos, yUV - texelY)).rgb * 0.25 +
-                              texture(Source, vec2(xPos, yUV)).rgb * 0.5 +
-                              texture(Source, vec2(xPos, yUV + texelY)).rgb * 0.25;
-                    
-                    vec3 c1 = texture(Source, vec2(xPos, yUV_offset - texelY)).rgb * 0.25 +
-                              texture(Source, vec2(xPos, yUV_offset)).rgb * 0.5 +
-                              texture(Source, vec2(xPos, yUV_offset + texelY)).rgb * 0.25;
-                    
-                    // Correlation: high when colors match (1.0 - distance)
-                    corr += 1.0 - length(c0 - c1);
-                    numSamples++;
-                }
-                
-                corr /= float(max(numSamples, 1));
-                
-                if(corr > bestCorr) {
-                    bestCorr = corr;
-                    bestPitch = p;
-                }
-            }
-            
-            // Vote for this pitch (manual switch for GLSL compatibility)
-            if(bestPitch == 3) h3 += 1.0;
-            else if(bestPitch == 4) h4 += 1.0;
-            else if(bestPitch == 5) h5 += 1.0;
-            else if(bestPitch == 6) h6 += 1.0;
-            else if(bestPitch == 7) h7 += 1.0;
-            else if(bestPitch == 8) h8 += 1.0;
-            else if(bestPitch == 9) h9 += 1.0;
-            else if(bestPitch == 10) h10 += 1.0;
-            else if(bestPitch == 11) h11 += 1.0;
-            else if(bestPitch == 12) h12 += 1.0;
-        }
-        
-        // Find mode (most voted pitch)
-        float maxVotes = h3;
-        int detectedPitch = 3;
-        if(h4 > maxVotes) { maxVotes = h4; detectedPitch = 4; }
-        if(h5 > maxVotes) { maxVotes = h5; detectedPitch = 5; }
-        if(h6 > maxVotes) { maxVotes = h6; detectedPitch = 6; }
-        if(h7 > maxVotes) { maxVotes = h7; detectedPitch = 7; }
-        if(h8 > maxVotes) { maxVotes = h8; detectedPitch = 8; }
-        if(h9 > maxVotes) { maxVotes = h9; detectedPitch = 9; }
-        if(h10 > maxVotes) { maxVotes = h10; detectedPitch = 10; }
-        if(h11 > maxVotes) { maxVotes = h11; detectedPitch = 11; }
-        if(h12 > maxVotes) { maxVotes = h12; detectedPitch = 12; }
-        
-        // Calculate scanline count from detected pitch
-        float detectedCount = global.SourceSize.y / float(detectedPitch);
-        
-        // === DISPLAY ===
         vec2 px = vTexCoord * global.OutputSize.xy;
         
-        // Display detected values at top of screen
-        if(px.y < 120.0) {
+        // Display source dimensions at top of screen
+        if(px.y < 80.0) {
             vec3 debugColor = vec3(0.0);
             
             float digitH = 24.0;
             float digitW = digitH * 0.6;
             float text = 0.0;
             
-            // Row 1: Detected scanline count
-            text += renderNum(detectedCount, px, vec2(10.0, 10.0), digitW, digitH, 4);
-            // Row 2: Detected pitch (in pixels)
-            text += renderNum(float(detectedPitch), px, vec2(10.0, 45.0), digitW, digitH, 2);
-            // Row 3: Confidence (max votes / 16 columns * 100)
-            text += renderNum(maxVotes / 16.0 * 100.0, px, vec2(10.0, 80.0), digitW, digitH, 3);
+            // Row 1: Source height (pixels)
+            text += renderNum(global.SourceSize.y, px, vec2(10.0, 10.0), digitW, digitH, 4);
+            // Row 2: Source width (pixels)
+            text += renderNum(global.SourceSize.x, px, vec2(10.0, 45.0), digitW, digitH, 4);
             
             debugColor = mix(debugColor, vec3(0.0, 1.0, 0.5), text);
             FragColor = vec4(debugColor, 1.0);
             return;
         }
         
-        // Show dimmed source with pitch visualization for rest of screen
-        vec3 srcColor = texture(Source, vTexCoord).rgb * 0.6;
-        
-        // Draw horizontal lines at detected pitch intervals
-        float srcY = vTexCoord.y * global.SourceSize.y;
-        if(mod(srcY, float(detectedPitch)) < 1.0) {
-            srcColor = mix(srcColor, vec3(0.0, 1.0, 0.5), 0.5);
-        }
-        
+        // Show source image (useful for manual pixel counting)
+        vec3 srcColor = texture(Source, vTexCoord).rgb;
         FragColor = vec4(srcColor, 1.0);
         return;
     }
