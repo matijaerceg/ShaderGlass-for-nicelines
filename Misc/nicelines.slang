@@ -190,11 +190,6 @@ void main() {
         // Increment frame counter
         frameCount = mod(frameCount + 1.0, 256.0);
         
-        // Write detection state to ENTIRE OUTPUT (not just 4x1)
-        // This ensures the feedback texture captures something
-        // Later we'll optimize to just store in a corner
-        FragColor = vec4(frameCount / 256.0, 0.0, 0.0, frameCount / 256.0);
-        
         // Only show visualization outside the top-left debug area
         if(px.y > 50.0) {
         
@@ -202,7 +197,6 @@ void main() {
             vec3 debugColor = texture(Source, vTexCoord).rgb * 0.3; // Dimmed source
             
             // Top bar: frame counter visualization (wraps at 256)
-            float barHeight = 20.0;
             if(px.y < 70.0 && px.y > 50.0) {
                 float progress = frameCount / 256.0;
                 if(vTexCoord.x < progress) {
@@ -212,25 +206,29 @@ void main() {
                 }
             }
         
-        // Numeric display: frame count using 7-segment display
-        float digitH = max(24.0, global.OutputSize.y / 25.0);
-        float digitW = digitH * 0.6;
-        float margin = 10.0;
-        
-        float text = 0.0;
-        text += renderNum(frameCount, px, vec2(margin, 70.0 + margin), digitW, digitH, 3);
-        
-        // Background box for numbers
-        float boxW = digitW * 4.0;
-        float boxH = digitH + margin * 2.0;
-        if(px.x < boxW && px.y > 70.0 && px.y < 70.0 + boxH) {
-            debugColor = debugColor * 0.3;
-        }
-        
-        // Text overlay
-        debugColor = mix(debugColor, vec3(0.0, 1.0, 0.5), text);
-        
-        FragColor = vec4(debugColor, 1.0);
+            // Numeric display: frame count using 7-segment display
+            float digitH = max(24.0, global.OutputSize.y / 25.0);
+            float digitW = digitH * 0.6;
+            float margin = 10.0;
+            
+            float text = 0.0;
+            text += renderNum(frameCount, px, vec2(margin, 70.0 + margin), digitW, digitH, 3);
+            
+            // Background box for numbers
+            float boxW = digitW * 4.0;
+            float boxH = digitH + margin * 2.0;
+            if(px.x < boxW && px.y > 70.0 && px.y < 70.0 + boxH) {
+                debugColor = debugColor * 0.3;
+            }
+            
+            // Text overlay
+            debugColor = mix(debugColor, vec3(0.0, 1.0, 0.5), text);
+            
+            FragColor = vec4(debugColor, 1.0);
+        } else {
+            // Write detection state to ENTIRE OUTPUT (not just 4x1)
+            // This ensures the feedback texture captures something
+            FragColor = vec4(frameCount / 256.0, 0.0, 0.0, frameCount / 256.0);
         }
         return;
     }
