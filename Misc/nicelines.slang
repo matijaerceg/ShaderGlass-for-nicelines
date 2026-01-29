@@ -161,40 +161,39 @@ void main() {
         // Sample at center of pixel (0,0)
         vec2 feedbackUV = vec2(0.5 / global.OutputSize.x, 0.5 / global.OutputSize.y);
         vec4 prevState = texture(PassFeedback0, feedbackUV);
+        
+        // Debug: Show what we're reading from feedback
+        // Top-left corner: red=prevState values, green=whether alpha > 0
+        if(px.x < 200.0 && px.y < 50.0) {
+            vec3 debugColor = vec3(0.0);
+            debugColor.r = prevState.a * 50.0; // Amplify alpha channel
+            debugColor.g = (prevState.a > 0.001) ? 1.0 : 0.0; // Green if alpha exists
+            debugColor.b = prevState.r + prevState.g + prevState.b; // Any RGB data?
+            FragColor = vec4(debugColor, 1.0);
+            return;
+        }
+        
         float frameCount = prevState.a * 256.0;
         
         // Increment frame counter
         frameCount = mod(frameCount + 1.0, 256.0);
         
-        // Debug: Show raw feedback texture in top-right corner
-        if(px.x > global.OutputSize.x - 150.0 && px.y < 100.0) {
-            vec2 debugUV = vec2((px.x - (global.OutputSize.x - 150.0)) / 150.0, px.y / 100.0);
-            vec4 feedbackSample = texture(PassFeedback0, debugUV * 0.1); // Sample top-left 10% of feedback
-            FragColor = vec4(feedbackSample.rgb, 1.0);
-            // Show alpha channel as white when > 0
-            if(feedbackSample.a > 0.01) {
-                FragColor = vec4(1.0, 1.0, 1.0, 1.0);
-            }
-            return;
-        }
+        // Write detection state to ENTIRE OUTPUT (not just 4x1)
+        // This ensures the feedback texture captures something
+        // Later we'll optimize to just store in a corner
+        FragColor = vec4(frameCount / 256.0, 0.0, 0.0, frameCount / 256.0);
         
-        // Write detection state to top-left 4x1 region
-        if(px.x < 4.0 && px.y < 1.0) {
-            // Pixel 0: detection state storage
-            // R: detected pitch (scaled 0-1, represents 0-20 pixels)
-            // G: detected offset (scaled 0-1, represents 0-100 pixels)
-            // B: confidence (0-1)
-            // A: frame counter (0-1, represents 0-255 frames)
-            FragColor = vec4(0.0, 0.0, 0.0, frameCount / 256.0);
-            return;
-        }
+        // Only show visualization outside the top-left debug area
+        if(px.y > 50.0) {
+        // Only show visualization outside the top-left debug area
+        if(px.y > 50.0) {
         
         // Visualize frame counter as growing bar
         vec3 debugColor = texture(Source, vTexCoord).rgb * 0.3; // Dimmed source
         
         // Top bar: frame counter visualization (wraps at 256)
         float barHeight = 20.0;
-        if(px.y < barHeight) {
+        if(px.y < 70.0 && px.y > 50.0) {
             float progress = frameCount / 256.0;
             if(vTexCoord.x < progress) {
                 debugColor = vec3(0.0, 1.0, 0.5); // Cyan bar
@@ -209,24 +208,20 @@ void main() {
         float margin = 10.0;
         
         float text = 0.0;
-        text += renderNum(frameCount, px, vec2(margin, barHeight + margin), digitW, digitH, 3);
+        text += renderNum(frameCount, px, vec2(margin, 70.0 + margin), digitW, digitH, 3);
         
         // Background box for numbers
         float boxW = digitW * 4.0;
         float boxH = digitH + margin * 2.0;
-        if(px.x < boxW && px.y > barHeight && px.y < barHeight + boxH) {
+        if(px.x < boxW && px.y > 70.0 && px.y < 70.0 + boxH) {
             debugColor = debugColor * 0.3;
         }
         
         // Text overlay
         debugColor = mix(debugColor, vec3(0.0, 1.0, 0.5), text);
         
-        // Label
-        if(px.y > barHeight + boxH + 5.0 && px.y < barHeight + boxH + 25.0 && px.x < 300.0) {
-            debugColor = mix(debugColor, vec3(1.0, 1.0, 1.0), 0.3);
-        }
-        
         FragColor = vec4(debugColor, 1.0);
+        }
         return;
     }
     
