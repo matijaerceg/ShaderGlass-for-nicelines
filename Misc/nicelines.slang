@@ -65,7 +65,7 @@ void main() {
 layout(location = 0) in vec2 vTexCoord;
 layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;
-layout(set = 0, binding = 3) uniform sampler2D OriginalHistory1;
+layout(set = 0, binding = 3) uniform sampler2D PassFeedback0;
 
 // sRGB conversion
 float SrgbToLinear(float c) {
@@ -157,39 +157,49 @@ void main() {
     if(global.DEV_MODE > 0.5) {
         vec2 px = vTexCoord * global.OutputSize.xy;
         
-        // TEST: Can we read previous frame via OriginalHistory1?
-        vec4 prevFrame = texture(OriginalHistory1, vTexCoord);
-        vec4 currFrame = texture(Source, vTexCoord);
+        // Read our own previous output (creates feedback loop!)
+        vec4 prevOutput = texture(PassFeedback0, vTexCoord);
         
-        // Top section: show difference between current and previous frame
+        // Increment a counter stored in red channel
+        float counter = prevOutput.r * 1000.0; // Read previous counter
+        counter = mod(counter + 1.0, 1000.0);   // Increment and wrap
+        
+        // Top section: show counter and feedback values
         if(px.y < 100.0) {
-            // Difference should show motion - amplify to make visible
-            vec3 diff = abs(currFrame.rgb - prevFrame.rgb) * 10.0;
+            vec3 debugColor = prevOutput.rgb * 5.0; // Amplify feedback to see it
             
             // Show numeric readout
             float digitH = 14.0;
             float digitW = digitH * 0.6;
             float text = 0.0;
             
-            // Row 1: Max difference across RGB channels * 1000
-            float maxDiff = max(max(diff.r, diff.g), diff.b);
-            text += renderNum(maxDiff * 1000.0, px, vec2(5.0, 5.0), digitW, digitH, 5);
-            // Row 2: FrameCount
+            // Row 1: Counter value (should increment each frame)
+            text += renderNum(counter, px, vec2(5.0, 5.0), digitW, digitH, 5);
+            // Row 2: FrameCount for comparison
             text += renderNum(float(global.FrameCount), px, vec2(5.0, 25.0), digitW, digitH, 5);
+            // Row 3: Previous R channel * 1000
+            text += renderNum(prevOutput.r * 1000.0, px, vec2(5.0, 45.0), digitW, digitH, 5);
             
-            vec3 debugColor = mix(diff, vec3(1.0, 1.0, 0.0), text);
+            debugColor = mix(debugColor, vec3(1.0, 1.0, 0.0), text);
             FragColor = vec4(debugColor, 1.0);
             return;
         }
         
-        // Rest: show side-by-side comparison
-        if(vTexCoord.x < 0.5) {
-            // Left half: current frame
-            FragColor = currFrame;
-        } else {
-            // Right half: previous frame
-            FragColor = prevFrame;
+        // Progress bar area: visual counter
+        if(px.y >= 100.0 && px.y < 120.0) {
+            float progress = counter / 1000.0;
+            vec3 barColor;
+            if(vTexCoord.x < progress) {
+                barColor = vec3(0.0, 1.0, 0.5); // Cyan = filled
+            } else {
+                barColor = vec3(0.2, 0.2, 0.2); // Dark = empty
+            }
+            FragColor = vec4(barColor, 1.0);
+            return;
         }
+        
+        // Rest of screen: Write counter to output (this feeds back next frame!)
+        FragColor = vec4(counter / 1000.0, 0.5, 0.5, 1.0);
         return;
     }
     
