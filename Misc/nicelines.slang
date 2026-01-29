@@ -157,12 +157,26 @@ void main() {
     if(global.DEV_MODE > 0.5) {
         vec2 px = vTexCoord * global.OutputSize.xy;
         
-        // Read previous detection state from top-left pixel
-        vec4 prevState = texelFetch(PassFeedback0, ivec2(0, 0), 0);
+        // Read previous detection state from top-left corner using texture()
+        // Sample at center of pixel (0,0)
+        vec2 feedbackUV = vec2(0.5 / global.OutputSize.x, 0.5 / global.OutputSize.y);
+        vec4 prevState = texture(PassFeedback0, feedbackUV);
         float frameCount = prevState.a * 256.0;
         
         // Increment frame counter
         frameCount = mod(frameCount + 1.0, 256.0);
+        
+        // Debug: Show raw feedback texture in top-right corner
+        if(px.x > global.OutputSize.x - 150.0 && px.y < 100.0) {
+            vec2 debugUV = vec2((px.x - (global.OutputSize.x - 150.0)) / 150.0, px.y / 100.0);
+            vec4 feedbackSample = texture(PassFeedback0, debugUV * 0.1); // Sample top-left 10% of feedback
+            FragColor = vec4(feedbackSample.rgb, 1.0);
+            // Show alpha channel as white when > 0
+            if(feedbackSample.a > 0.01) {
+                FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+            }
+            return;
+        }
         
         // Write detection state to top-left 4x1 region
         if(px.x < 4.0 && px.y < 1.0) {
