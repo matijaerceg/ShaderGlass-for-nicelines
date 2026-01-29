@@ -19,7 +19,7 @@
 #pragma parameter NOISE_ZIGZAG_PITCH "Noise: Zigzag Pitch (pixels)" 6.0 2.0 24.0 1.0
 #pragma parameter NOISE_ZIGZAG_HARMONICS "Noise: Zigzag Complexity" 0.5 0.0 1.0 0.1
 #pragma parameter NOISE_SWAP_RANGE "Noise: Horizontal Swap Range" 2.0 0.0 2.0 1.0
-#pragma parameter NOISE_SWAP_PHASE "Noise: Swap Phase (x Scanline Height)" 1.0 0.25 2.0 0.25
+#pragma parameter NOISE_SWAP_PHASE "Noise: Swap Phase (x Scanline Height)" 1.0 0.25 2.0 0.05
 #pragma parameter NOISE_SEED "Noise: Pattern Seed" 0.0 0.0 99.0 1.0
 
 layout(std140, set = 0, binding = 0) uniform UBO {
