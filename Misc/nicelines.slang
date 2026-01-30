@@ -1,18 +1,18 @@
 #version 450
 
 // === PARAMETERS ===
-#pragma parameter COMPARE_MODE "[v25]  Half Screen Compare" 0.0 0.0 1.0 1.0
-#pragma parameter SCANLINE_MODE "Num Scanlines (224p / 240p / Manual)" 0.0 0.0 2.0 1.0
-#pragma parameter MANUAL_LINES "Num for Manual Mode" 360.0 120.0 480.0 5.0
-#pragma parameter FINETUNE_LINES "Num Scanlines Finetune" 0.0 -5.0 5.0 1.0
-#pragma parameter AUTO_LINES "Num Scanlines Round to Nearest Multiple of Resolution (Recommend OFF for 2D games, ON for 3D;)" 0.0 0.0 1.0 1.0
-#pragma parameter BLUR_OFFSET "Downscaling Prepass (Lower = Softer)" 0.04 -0.04 0.12 0.01
-#pragma parameter H_BLUR "Horizontal Blur (worn out tube look)" 1.0 0.0 8.0 0.1
+#pragma parameter COMPARE_MODE "[v26]  Half Screen COMPARE" 0.0 0.0 1.0 1.0
+#pragma parameter SCANLINE_MODE "NUMBER of Scanlines (224p / 240p / Manual)" 0.0 0.0 2.0 1.0
+#pragma parameter MANUAL_LINES "Number for MANUAL Mode" 360.0 120.0 480.0 5.0
+#pragma parameter FINETUNE_LINES "FINETUNE Number of Scanlines" 0.0 -5.0 5.0 1.0
+#pragma parameter AUTO_LINES "Num. Scanlines ROUND to Nearest Multiple of Resolution (Recommend OFF for 2D games, ON for 3D;)" 0.0 0.0 1.0 1.0
+#pragma parameter BLUR_OFFSET "DOWNSCALING Prepass (Lower = Softer)" 0.04 -0.04 0.12 0.01
+#pragma parameter H_BLUR "HORIZONTAL BLUR (worn out tube look)" 1.0 0.0 8.0 0.1
 
 // === SUBPIXEL NOISE PARAMETERS ===
-#pragma parameter SUBPIXEL_NOISE "Shadow Mask Effect" 1.0 0.0 1.0 1.0
-#pragma parameter NOISE_SWAP_RANGE "Resolution below which to halve Shadow Mask Effect intensity" 960.0 360.0 2160.0 10.0
-#pragma parameter SHIMMER_NOISE "Signal Noise Effect (Requires Shadow Mask Effect)" 0.0 0.0 1.0 1.0
+#pragma parameter SUBPIXEL_NOISE "SHADOW MASK Effect" 1.0 0.0 1.0 1.0
+#pragma parameter SHADOW_STRENGTH "Shadow Mask STRENGTH (1-3)" 2.0 1.0 3.0 1.0
+#pragma parameter SHIMMER_NOISE "Signal NOISE Effect (Requires Shadow Mask Effect)" 0.0 0.0 1.0 1.0
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
@@ -28,7 +28,7 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float BLUR_OFFSET;
     float H_BLUR;
     float SUBPIXEL_NOISE;
-    float NOISE_SWAP_RANGE;
+    float SHADOW_STRENGTH;
     float SHIMMER_NOISE;
 } global;
 
@@ -166,8 +166,8 @@ void main() {
         float seed = (global.SHIMMER_NOISE > 0.5) ? float(global.FrameCount) : 0.0;
         
         // --- HORIZONTAL SWAP ---
-        // Swap range is 2 at/above breakpoint resolution, 1 below
-        float swapRange = (global.OutputSize.y >= global.NOISE_SWAP_RANGE) ? 2.0 : 1.0;
+        // Swap range directly from strength setting (1, 2, or 3)
+        float swapRange = global.SHADOW_STRENGTH;
         if(swapRange > 0.5) {
             // Phase height is a factor of scanline pitch, rounded to integer fat-pixels (locked at 0.8)
             float phaseH = max(1.0, floor(pixelsPerScanline * 0.8 + 0.5));
