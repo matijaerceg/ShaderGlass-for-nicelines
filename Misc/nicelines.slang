@@ -113,8 +113,8 @@ vec3 sampleWithBlur(vec2 uv, float effectiveScale) {
 
 void main() {
     float baseWidth = 0.3;   // Hardcoded thickness baseline
-    float minWidth = 0.5;    // Hardcoded thickness min (dark)
-    float maxWidth = 1.0;    // Hardcoded max thickness
+    float minWidth = 0.5;    // Hardcoded thickness min
+    float maxWidth = 1.0;    // Hardcoded thickness max
     
     // Determine target scanline count based on mode
     float targetLines;
