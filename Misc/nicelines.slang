@@ -260,7 +260,7 @@ void main() {
         finalColor = vec3(0.0);
     }
     
-    // Apply brightness boost (hardcoded)
+    // Apply brightness boost (hardcoded for now)
     finalColor *= 1.1;
 
     FragColor = vec4(LinearToSrgb3(finalColor), 1.0);
