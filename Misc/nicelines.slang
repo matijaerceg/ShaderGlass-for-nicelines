@@ -2,17 +2,17 @@
 
 // === PARAMETERS ===
 #pragma parameter COMPARE_MODE "[v26]  Half Screen COMPARE" 0.0 0.0 1.0 1.0
-#pragma parameter SCANLINE_MODE "NUMBER of Scanlines (224p / 240p / Manual)" 0.0 0.0 2.0 1.0
-#pragma parameter MANUAL_LINES "Number for MANUAL Mode" 360.0 120.0 480.0 5.0
+#pragma parameter SCANLINE_MODE "SCANLINES MODE (224p / 240p / Manual)" 0.0 0.0 2.0 1.0
+#pragma parameter MANUAL_LINES "MANUAL Mode: Number of Scanlines" 360.0 120.0 480.0 5.0
 #pragma parameter FINETUNE_LINES "FINETUNE Number of Scanlines" 0.0 -5.0 5.0 1.0
-#pragma parameter AUTO_LINES "Num. Scanlines ROUND to Nearest Multiple of Resolution (Recommend OFF for 2D games, ON for 3D;)" 0.0 0.0 1.0 1.0
+#pragma parameter AUTO_LINES "ROUND Number of Scanlines to Nearest Multiple of Resolution (Recommend OFF for 2D games, ON for 3D;)" 0.0 0.0 1.0 1.0
 #pragma parameter BLUR_OFFSET "DOWNSCALING Prepass (Lower = Softer)" 0.04 -0.04 0.12 0.01
 #pragma parameter H_BLUR "HORIZONTAL BLUR (worn out tube look)" 1.0 0.0 8.0 0.1
 
 // === SUBPIXEL NOISE PARAMETERS ===
-#pragma parameter SUBPIXEL_NOISE "SHADOW MASK Effect" 1.0 0.0 1.0 1.0
+#pragma parameter SUBPIXEL_NOISE "SHADOW MASK Off/On" 1.0 0.0 1.0 1.0
 #pragma parameter SHADOW_STRENGTH "Shadow Mask STRENGTH (1-3)" 2.0 1.0 3.0 1.0
-#pragma parameter SHIMMER_NOISE "Signal NOISE Effect (Requires Shadow Mask Effect)" 0.0 0.0 1.0 1.0
+#pragma parameter SHIMMER_NOISE "Shimmering NOISE Effect (Requires Shadow Mask Effect ON)" 0.0 0.0 1.0 1.0
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
