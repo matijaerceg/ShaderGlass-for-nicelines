@@ -1,14 +1,13 @@
 #version 450
 
 // === PARAMETERS ===
-#pragma parameter COMPARE_MODE "[v24]  Half Screen Compare" 0.0 0.0 1.0 1.0
+#pragma parameter COMPARE_MODE "[v25]  Half Screen Compare" 0.0 0.0 1.0 1.0
 #pragma parameter SCANLINE_MODE "Num Scanlines (224p / 240p / Manual)" 0.0 0.0 2.0 1.0
 #pragma parameter MANUAL_LINES "Num for Manual Mode" 360.0 120.0 480.0 5.0
 #pragma parameter FINETUNE_LINES "Num Scanlines Finetune" 0.0 -5.0 5.0 1.0
 #pragma parameter AUTO_LINES "Num Scanlines Round to Nearest Multiple of Resolution (Recommend OFF for 2D games, ON for 3D;)" 0.0 0.0 1.0 1.0
 #pragma parameter BLUR_OFFSET "Downscaling Prepass (Lower = Softer)" 0.04 -0.04 0.12 0.01
 #pragma parameter H_BLUR "Horizontal Blur (worn out tube look)" 1.0 0.0 8.0 0.1
-#pragma parameter BRIGHT_GAP "Bright Gap (temp: 0=no gap, 1=full gap at white)" 0.0 0.0 1.0 0.01
 
 // === SUBPIXEL NOISE PARAMETERS ===
 #pragma parameter SUBPIXEL_NOISE "Shadow Mask Effect" 1.0 0.0 1.0 1.0
@@ -28,7 +27,6 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float AUTO_LINES;
     float BLUR_OFFSET;
     float H_BLUR;
-    float BRIGHT_GAP;
     float SUBPIXEL_NOISE;
     float NOISE_SWAP_RANGE;
     float SHIMMER_NOISE;
@@ -219,26 +217,13 @@ void main() {
     float scanlineWidth = calcScanlineWidth(color, baseWidth, minWidth, maxWidth);
     vec3 outputColor = clamp(color / scanlineWidth, 0.0, 1.0);
     
-    // Scanline mask (reduced softness at full width based on BRIGHT_GAP)
+    // Scanline mask with soft edges
     float scanlineMask = 1.0;
     vec3 finalColor;
     float halfGap = (1.0 - scanlineWidth) * 0.5;
     
-    // At full brightness, reduce softness based on BRIGHT_GAP (0 = no gap, 1 = full original softness)
-    float effectiveSoftness = edgeSoftness;
-    if(scanlineWidth >= 1.0) {
-        effectiveSoftness = edgeSoftness * global.BRIGHT_GAP;
-        halfGap = effectiveSoftness * 0.5;  // Create a small artificial gap
-    }
-    
-    if(effectiveSoftness < 0.001) {
-        // No softness: solid scanline
-        scanlineMask = 1.0;
-    } else {
-        // Soft edges with potentially reduced softness
-        scanlineMask = smoothstep(halfGap - effectiveSoftness, halfGap + effectiveSoftness, withinScanline) *
-                       smoothstep(1.0 - halfGap + effectiveSoftness, 1.0 - halfGap - effectiveSoftness, withinScanline);
-    }
+    scanlineMask = smoothstep(halfGap - edgeSoftness, halfGap + edgeSoftness, withinScanline) *
+                   smoothstep(1.0 - halfGap + edgeSoftness, 1.0 - halfGap - edgeSoftness, withinScanline);
     
     finalColor = outputColor * scanlineMask;
     
