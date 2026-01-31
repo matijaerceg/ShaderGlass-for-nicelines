@@ -279,26 +279,23 @@ void main() {
         float totalGreen = finalColor.g * 3.0;
         float totalBlue = finalColor.b * 3.0;
         
-        // Distribute RED: left first, then right, then middle
+        // Distribute RED: left first, overflow splits equally to middle and right
         float redLeft = min(totalRed, 1.0);
-        float redRemaining = max(totalRed - 1.0, 0.0);
-        float redRight = min(redRemaining, 1.0);
-        redRemaining = max(redRemaining - 1.0, 0.0);
-        float redMiddle = min(redRemaining, 1.0);
+        float redOverflow = max(totalRed - 1.0, 0.0) * 0.5;
+        float redMiddle = min(redOverflow, 1.0);
+        float redRight = min(redOverflow, 1.0);
         
-        // Distribute GREEN: middle first, then left, then right
+        // Distribute GREEN: middle first, overflow splits equally to left and right
         float greenMiddle = min(totalGreen, 1.0);
-        float greenRemaining = max(totalGreen - 1.0, 0.0);
-        float greenLeft = min(greenRemaining, 1.0);
-        greenRemaining = max(greenRemaining - 1.0, 0.0);
-        float greenRight = min(greenRemaining, 1.0);
+        float greenOverflow = max(totalGreen - 1.0, 0.0) * 0.5;
+        float greenLeft = min(greenOverflow, 1.0);
+        float greenRight = min(greenOverflow, 1.0);
         
-        // Distribute BLUE: right first, then middle, then left
+        // Distribute BLUE: right first, overflow splits equally to left and middle
         float blueRight = min(totalBlue, 1.0);
-        float blueRemaining = max(totalBlue - 1.0, 0.0);
-        float blueMiddle = min(blueRemaining, 1.0);
-        blueRemaining = max(blueRemaining - 1.0, 0.0);
-        float blueLeft = min(blueRemaining, 1.0);
+        float blueOverflow = max(totalBlue - 1.0, 0.0) * 0.5;
+        float blueLeft = min(blueOverflow, 1.0);
+        float blueMiddle = min(blueOverflow, 1.0);
         
         // Select the color values for this phosphor
         if(phosphorIdx == 0) {
