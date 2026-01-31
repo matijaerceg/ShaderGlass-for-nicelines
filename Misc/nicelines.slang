@@ -10,9 +10,15 @@
 #pragma parameter H_BLUR "HORIZONTAL BLUR (worn out tube look)" 1.0 0.0 8.0 0.1
 
 // === SUBPIXEL NOISE PARAMETERS ===
-#pragma parameter SUBPIXEL_NOISE "SHADOW MASK Off/Swap/Triad" 1.0 0.0 2.0 1.0
+#pragma parameter SUBPIXEL_NOISE "SHADOW MASK Off/Swap/Triad" 2.0 0.0 2.0 1.0
 #pragma parameter SHADOW_STRENGTH "Shadow Mask STRENGTH (1-3)" 2.0 1.0 3.0 1.0
 #pragma parameter SHIMMER_NOISE "Shimmering NOISE Effect (Requires Shadow Mask Effect ON)" 0.0 0.0 1.0 1.0
+
+// === TRIAD PARAMETERS ===
+#pragma parameter PHOSPHOR_WIDTH "TRIAD Phosphor Width (px)" 1.0 1.0 20.0 1.0
+#pragma parameter TRIAD_HEIGHT "TRIAD Height (px)" 1.0 1.0 20.0 1.0
+#pragma parameter SPILLOVER_MODE "TRIAD Spillover (Linear/Curved)" 0.0 0.0 1.0 1.0
+#pragma parameter CURVE_STRENGTH "TRIAD Curve Strength" 2.0 1.0 5.0 0.1
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
@@ -30,6 +36,10 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float SUBPIXEL_NOISE;
     float SHADOW_STRENGTH;
     float SHIMMER_NOISE;
+    float PHOSPHOR_WIDTH;
+    float TRIAD_HEIGHT;
+    float SPILLOVER_MODE;
+    float CURVE_STRENGTH;
 } global;
 
 // === VERTEX STAGE ===
@@ -254,20 +264,29 @@ void main() {
     }
 
     // === MODE 2: TRIAD-BASED SHADOW MASK (APPLIED LAST) ===
-    // 3x1 output pixels form one triad, containing three 1x1 phosphors (left/middle/right)
+    // Configurable phosphor width and triad height
     if(shadowMode == 2) {
+        float phosphorW = global.PHOSPHOR_WIDTH;
+        float triadW = phosphorW * 3.0;  // Total triad width = 3 phosphors
+        float triadH = global.TRIAD_HEIGHT;
+        
         // Which triad are we in, and which phosphor within it?
-        float triadIdx = floor(px.x / 3.0);
-        int phosphorIdx = int(mod(px.x, 3.0));  // 0=left, 1=middle, 2=right
+        float triadIdxX = floor(px.x / triadW);
+        float withinTriadX = mod(px.x, triadW);
+        int phosphorIdx = int(floor(withinTriadX / phosphorW));  // 0=left, 1=middle, 2=right
+        phosphorIdx = min(phosphorIdx, 2);  // Clamp to valid range
+        
+        // Vertical: which triad row are we in?
+        float triadIdxY = floor(px.y / triadH);
         
         // Sample the source at the CENTER of this triad (all pixels in triad use same color)
-        float triadCenterX = (triadIdx * 3.0 + 1.5) / global.OutputSize.x;
+        float triadCenterX = (triadIdxX * triadW + triadW * 0.5) / global.OutputSize.x;
         vec2 triadCenterUV = vec2(triadCenterX, sampleUV.y);
         
         // Get the color at triad center with H_BLUR, processed through scanlines
         vec3 triadColor = sampleWithHBlur(triadCenterUV, effectiveScale, global.H_BLUR);
-        float triadWidth = calcScanlineWidth(triadColor, baseWidth, minWidth, maxWidth);
-        vec3 triadOutput = clamp(triadColor / triadWidth, 0.0, 1.0) * scanlineMask;
+        float triadScanWidth = calcScanlineWidth(triadColor, baseWidth, minWidth, maxWidth);
+        vec3 triadOutput = clamp(triadColor / triadScanWidth, 0.0, 1.0) * scanlineMask;
         
         // Apply brightness boost to triad color
         triadOutput *= 1.1;
@@ -277,26 +296,62 @@ void main() {
         float totalGreen = triadOutput.g * 3.0;
         float totalBlue = triadOutput.b * 3.0;
         
-        // Distribute RED: left first, then right, then middle
-        float redLeft = min(totalRed, 1.0);
-        float redRemaining = max(totalRed - 1.0, 0.0);
-        float redRight = min(redRemaining, 1.0);
-        redRemaining = max(redRemaining - 1.0, 0.0);
-        float redMiddle = min(redRemaining, 1.0);
+        // Spillover distribution
+        float redLeft, redMiddle, redRight;
+        float greenLeft, greenMiddle, greenRight;
+        float blueLeft, blueMiddle, blueRight;
         
-        // Distribute GREEN: middle first, then left, then right
-        float greenMiddle = min(totalGreen, 1.0);
-        float greenRemaining = max(totalGreen - 1.0, 0.0);
-        float greenLeft = min(greenRemaining, 1.0);
-        greenRemaining = max(greenRemaining - 1.0, 0.0);
-        float greenRight = min(greenRemaining, 1.0);
-        
-        // Distribute BLUE: right first, then middle, then left
-        float blueRight = min(totalBlue, 1.0);
-        float blueRemaining = max(totalBlue - 1.0, 0.0);
-        float blueMiddle = min(blueRemaining, 1.0);
-        blueRemaining = max(blueRemaining - 1.0, 0.0);
-        float blueLeft = min(blueRemaining, 1.0);
+        if(global.SPILLOVER_MODE < 0.5) {
+            // === LINEAR SPILLOVER (original) ===
+            // Distribute RED: left first, then right, then middle
+            redLeft = min(totalRed, 1.0);
+            float redRemaining = max(totalRed - 1.0, 0.0);
+            redRight = min(redRemaining, 1.0);
+            redRemaining = max(redRemaining - 1.0, 0.0);
+            redMiddle = min(redRemaining, 1.0);
+            
+            // Distribute GREEN: middle first, then left, then right
+            greenMiddle = min(totalGreen, 1.0);
+            float greenRemaining = max(totalGreen - 1.0, 0.0);
+            greenLeft = min(greenRemaining, 1.0);
+            greenRemaining = max(greenRemaining - 1.0, 0.0);
+            greenRight = min(greenRemaining, 1.0);
+            
+            // Distribute BLUE: right first, then middle, then left
+            blueRight = min(totalBlue, 1.0);
+            float blueRemaining = max(totalBlue - 1.0, 0.0);
+            blueMiddle = min(blueRemaining, 1.0);
+            blueRemaining = max(blueRemaining - 1.0, 0.0);
+            blueLeft = min(blueRemaining, 1.0);
+        } else {
+            // === CURVED SPILLOVER ===
+            // Primary: steep curve in lows (fills quickly)
+            // Secondary: linear
+            // Tertiary: steep curve in highs (fills late)
+            float curve = global.CURVE_STRENGTH;
+            
+            // Helper: apply curve. pow(x, 1/curve) = steep in lows, pow(x, curve) = steep in highs
+            // For primary (steep in lows): use pow(normalized, 1/curve) - fills fast at low values
+            // For tertiary (steep in highs): use pow(normalized, curve) - fills slow until high values
+            
+            // RED: primary=left, secondary=right, tertiary=middle
+            float rNorm = totalRed / 3.0;  // Normalize to 0-1 range
+            redLeft = pow(clamp(rNorm, 0.0, 1.0), 1.0/curve);  // Steep in lows
+            redRight = clamp(rNorm, 0.0, 1.0);  // Linear
+            redMiddle = pow(clamp(rNorm, 0.0, 1.0), curve);  // Steep in highs
+            
+            // GREEN: primary=middle, secondary=left, tertiary=right
+            float gNorm = totalGreen / 3.0;
+            greenMiddle = pow(clamp(gNorm, 0.0, 1.0), 1.0/curve);  // Steep in lows
+            greenLeft = clamp(gNorm, 0.0, 1.0);  // Linear
+            greenRight = pow(clamp(gNorm, 0.0, 1.0), curve);  // Steep in highs
+            
+            // BLUE: primary=right, secondary=middle, tertiary=left
+            float bNorm = totalBlue / 3.0;
+            blueRight = pow(clamp(bNorm, 0.0, 1.0), 1.0/curve);  // Steep in lows
+            blueMiddle = clamp(bNorm, 0.0, 1.0);  // Linear
+            blueLeft = pow(clamp(bNorm, 0.0, 1.0), curve);  // Steep in highs
+        }
         
         // Select the color values for this phosphor
         if(phosphorIdx == 0) {
