@@ -239,39 +239,67 @@ void main() {
         float posInTriad = mod(outX, 3.0);       // Position within triad (0=left, 1=middle, 2=right)
         int posInt = int(posInTriad);
         
-        // The 3 source pixels "behind" this triad
-        // Map triad index to source pixel position (3:1 horizontal reduction)
-        float srcTriadCenter = (triadIdx * 3.0 + 1.5) / global.OutputSize.x;
+        // Convert output triad center to source UV
+        // The center of triad N is at output pixel (N*3 + 1.5)
+        float outTriadCenterX = triadIdx * 3.0 + 1.5;
+        float srcUVx = outTriadCenterX / global.OutputSize.x;  // This is the UV, same for source
+        
+        // Sample 3 adjacent source pixels centered on this UV
         float srcPixelSize = 1.0 / global.SourceSize.x;
         
-        // Sample the 3 source pixels in this triad's source region
-        vec2 srcUV0 = vec2(srcTriadCenter - srcPixelSize, sampleUV.y);
-        vec2 srcUV1 = vec2(srcTriadCenter, sampleUV.y);
-        vec2 srcUV2 = vec2(srcTriadCenter + srcPixelSize, sampleUV.y);
+        vec2 srcUV0 = vec2(srcUVx - srcPixelSize, sampleUV.y);
+        vec2 srcUV1 = vec2(srcUVx, sampleUV.y);
+        vec2 srcUV2 = vec2(srcUVx + srcPixelSize, sampleUV.y);
+        
+        // Clamp UVs to valid range
+        srcUV0.x = clamp(srcUV0.x, 0.0, 1.0);
+        srcUV1.x = clamp(srcUV1.x, 0.0, 1.0);
+        srcUV2.x = clamp(srcUV2.x, 0.0, 1.0);
         
         vec3 src0 = SrgbToLinear3(sampleWithBlur(srcUV0, effectiveScale));
         vec3 src1 = SrgbToLinear3(sampleWithBlur(srcUV1, effectiveScale));
         vec3 src2 = SrgbToLinear3(sampleWithBlur(srcUV2, effectiveScale));
         
-        // Total red energy from the 3 source pixels
+        // Total energy from the 3 source pixels for each channel
         float totalRed = src0.r + src1.r + src2.r;
+        float totalGreen = src0.g + src1.g + src2.g;
+        float totalBlue = src0.b + src1.b + src2.b;
         
-        // Distribute red: left first, then right, then middle
-        // Each output pixel can hold max 1.0
+        // Distribute RED: left first, then right, then middle
         float redLeft = min(totalRed, 1.0);
         float redRemaining = max(totalRed - 1.0, 0.0);
         float redRight = min(redRemaining, 1.0);
         redRemaining = max(redRemaining - 1.0, 0.0);
         float redMiddle = min(redRemaining, 1.0);
         
-        // Select the red value for this pixel position
-        float myRed = 0.0;
-        if(posInt == 0) myRed = redLeft;
-        else if(posInt == 2) myRed = redRight;
-        else myRed = redMiddle;
+        // Distribute GREEN: middle first, then left, then right
+        float greenMiddle = min(totalGreen, 1.0);
+        float greenRemaining = max(totalGreen - 1.0, 0.0);
+        float greenLeft = min(greenRemaining, 1.0);
+        greenRemaining = max(greenRemaining - 1.0, 0.0);
+        float greenRight = min(greenRemaining, 1.0);
         
-        // For now, just show red channel (green and blue zeroed for testing)
-        finalColor = vec3(myRed, 0.0, 0.0) * scanlineMask;
+        // Distribute BLUE: right first, then middle, then left
+        float blueRight = min(totalBlue, 1.0);
+        float blueRemaining = max(totalBlue - 1.0, 0.0);
+        float blueMiddle = min(blueRemaining, 1.0);
+        blueRemaining = max(blueRemaining - 1.0, 0.0);
+        float blueLeft = min(blueRemaining, 1.0);
+        
+        // Select the color values for this pixel position
+        vec3 myColor = vec3(0.0);
+        if(posInt == 0) {
+            // Left pixel
+            myColor = vec3(redLeft, greenLeft, blueLeft);
+        } else if(posInt == 1) {
+            // Middle pixel
+            myColor = vec3(redMiddle, greenMiddle, blueMiddle);
+        } else {
+            // Right pixel
+            myColor = vec3(redRight, greenRight, blueRight);
+        }
+        
+        finalColor = myColor * scanlineMask;
     }
     
     // Horizontal blur on final output (cheap 5-tap tent filter)
