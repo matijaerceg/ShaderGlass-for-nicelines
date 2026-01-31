@@ -263,51 +263,66 @@ void main() {
     if(global.COMPARE_MODE > 0.5 && abs(vTexCoord.x - 0.5) < 0.002) {
         finalColor = vec3(0.0);
     }
-    
-    // Apply brightness boost (hardcoded for now)
-    finalColor *= 1.1;
 
     // === MODE 2: TRIAD-BASED SHADOW MASK (APPLIED LAST) ===
-    // 6x2 output pixels form one triad, containing three 2x2 phosphors (left/middle/right)
+    // 3x1 output pixels form one triad, containing three 1x1 phosphors (left/middle/right)
     if(shadowMode == 2) {
-        // Which 2x2 phosphor are we in? (0=left, 1=middle, 2=right)
-        int phosphorIdx = int(floor(mod(px.x, 6.0) / 2.0));
+        // Which triad are we in, and which phosphor within it?
+        float triadIdx = floor(px.x / 3.0);
+        int phosphorIdx = int(mod(px.x, 3.0));  // 0=left, 1=middle, 2=right
         
-        // Use the already-processed finalColor (with scanlines, blur, brightness applied)
+        // Sample the source at the CENTER of this triad (all pixels in triad use same color)
+        float triadCenterX = (triadIdx * 3.0 + 1.5) / global.OutputSize.x;
+        vec2 triadCenterUV = vec2(triadCenterX, sampleUV.y);
+        
+        // Get the color at triad center, processed through scanlines
+        vec3 triadColor = SrgbToLinear3(sampleWithBlur(triadCenterUV, effectiveScale));
+        float triadWidth = calcScanlineWidth(triadColor, baseWidth, minWidth, maxWidth);
+        vec3 triadOutput = clamp(triadColor / triadWidth, 0.0, 1.0) * scanlineMask;
+        
+        // Apply brightness boost to triad color
+        triadOutput *= 1.1;
+        
         // Total energy is 3x the color (spreading across 3 phosphors)
-        float totalRed = finalColor.r * 3.0;
-        float totalGreen = finalColor.g * 3.0;
-        float totalBlue = finalColor.b * 3.0;
+        float totalRed = triadOutput.r * 3.0;
+        float totalGreen = triadOutput.g * 3.0;
+        float totalBlue = triadOutput.b * 3.0;
         
-        // Distribute RED: left first, overflow splits equally to middle and right
+        // Distribute RED: left first, then right, then middle
         float redLeft = min(totalRed, 1.0);
-        float redOverflow = max(totalRed - 1.0, 0.0) * 0.5;
-        float redMiddle = min(redOverflow, 1.0);
-        float redRight = min(redOverflow, 1.0);
+        float redRemaining = max(totalRed - 1.0, 0.0);
+        float redRight = min(redRemaining, 1.0);
+        redRemaining = max(redRemaining - 1.0, 0.0);
+        float redMiddle = min(redRemaining, 1.0);
         
-        // Distribute GREEN: middle first, overflow splits equally to left and right
+        // Distribute GREEN: middle first, then left, then right
         float greenMiddle = min(totalGreen, 1.0);
-        float greenOverflow = max(totalGreen - 1.0, 0.0) * 0.5;
-        float greenLeft = min(greenOverflow, 1.0);
-        float greenRight = min(greenOverflow, 1.0);
+        float greenRemaining = max(totalGreen - 1.0, 0.0);
+        float greenLeft = min(greenRemaining, 1.0);
+        greenRemaining = max(greenRemaining - 1.0, 0.0);
+        float greenRight = min(greenRemaining, 1.0);
         
-        // Distribute BLUE: right first, overflow splits equally to left and middle
+        // Distribute BLUE: right first, then middle, then left
         float blueRight = min(totalBlue, 1.0);
-        float blueOverflow = max(totalBlue - 1.0, 0.0) * 0.5;
-        float blueLeft = min(blueOverflow, 1.0);
-        float blueMiddle = min(blueOverflow, 1.0);
+        float blueRemaining = max(totalBlue - 1.0, 0.0);
+        float blueMiddle = min(blueRemaining, 1.0);
+        blueRemaining = max(blueRemaining - 1.0, 0.0);
+        float blueLeft = min(blueRemaining, 1.0);
         
         // Select the color values for this phosphor
         if(phosphorIdx == 0) {
-            // Left phosphor (2x2 block)
+            // Left phosphor
             finalColor = vec3(redLeft, greenLeft, blueLeft);
         } else if(phosphorIdx == 1) {
-            // Middle phosphor (2x2 block)
+            // Middle phosphor
             finalColor = vec3(redMiddle, greenMiddle, blueMiddle);
         } else {
-            // Right phosphor (2x2 block)
+            // Right phosphor
             finalColor = vec3(redRight, greenRight, blueRight);
         }
+    } else {
+        // Apply brightness boost for non-triad modes (moved here to avoid double-apply)
+        finalColor *= 1.1;
     }
 
     FragColor = vec4(LinearToSrgb3(finalColor), 1.0);
