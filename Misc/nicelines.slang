@@ -231,39 +231,36 @@ void main() {
     
     finalColor = outputColor * scanlineMask;
     
-    // === MODE 2: TRIAD-BASED SHADOW MASK (TEST - RED ONLY) ===
+    // === MODE 2: TRIAD-BASED SHADOW MASK ===
+    // 6x2 output pixels form one triad, containing three 2x2 phosphors (left/middle/right)
     if(shadowMode == 2) {
-        // Find which output pixel triad we're in (groups of 3)
-        float outX = px.x;
-        float triadIdx = floor(outX / 3.0);      // Which triad (0, 1, 2, ...)
-        float posInTriad = mod(outX, 3.0);       // Position within triad (0=left, 1=middle, 2=right)
-        int posInt = int(posInTriad);
+        // Find which output pixel triad we're in
+        // Triads are 6 pixels wide, 2 pixels tall
+        float triadIdxX = floor(px.x / 6.0);     // Which triad column
+        float triadIdxY = floor(px.y / 2.0);     // Which triad row
+        float posInTriadX = mod(px.x, 6.0);      // Position within triad (0-5)
         
-        // Convert output triad center to source UV
-        // The center of triad N is at output pixel (N*3 + 1.5)
-        float outTriadCenterX = triadIdx * 3.0 + 1.5;
-        float srcUVx = outTriadCenterX / global.OutputSize.x;  // This is the UV, same for source
+        // Which 2x2 phosphor are we in? (0=left, 1=middle, 2=right)
+        int phosphorIdx = int(floor(posInTriadX / 2.0));
         
-        // Sample 3 adjacent source pixels centered on this UV
-        float srcPixelSize = 1.0 / global.SourceSize.x;
+        // Sample the source region underneath this 6x2 triad
+        // Triad covers output pixels [triadIdxX*6, triadIdxX*6+6) x [triadIdxY*2, triadIdxY*2+2)
+        // Convert to UV: center of the 6x2 region
+        float triadCenterX = (triadIdxX * 6.0 + 3.0) / global.OutputSize.x;
+        float triadCenterY = (triadIdxY * 2.0 + 1.0) / global.OutputSize.y;
         
-        vec2 srcUV0 = vec2(srcUVx - srcPixelSize, sampleUV.y);
-        vec2 srcUV1 = vec2(srcUVx, sampleUV.y);
-        vec2 srcUV2 = vec2(srcUVx + srcPixelSize, sampleUV.y);
+        // Sample a small area around the triad center (using existing blur mechanism)
+        vec2 triadUV = vec2(triadCenterX, triadCenterY);
+        triadUV = clamp(triadUV, vec2(0.0), vec2(1.0));
         
-        // Clamp UVs to valid range
-        srcUV0.x = clamp(srcUV0.x, 0.0, 1.0);
-        srcUV1.x = clamp(srcUV1.x, 0.0, 1.0);
-        srcUV2.x = clamp(srcUV2.x, 0.0, 1.0);
+        // Sample source at triad center (blur will naturally average the region)
+        vec3 srcColor = SrgbToLinear3(sampleWithBlur(triadUV, effectiveScale));
         
-        vec3 src0 = SrgbToLinear3(sampleWithBlur(srcUV0, effectiveScale));
-        vec3 src1 = SrgbToLinear3(sampleWithBlur(srcUV1, effectiveScale));
-        vec3 src2 = SrgbToLinear3(sampleWithBlur(srcUV2, effectiveScale));
-        
-        // Total energy from the 3 source pixels for each channel
-        float totalRed = src0.r + src1.r + src2.r;
-        float totalGreen = src0.g + src1.g + src2.g;
-        float totalBlue = src0.b + src1.b + src2.b;
+        // Total energy is 3x the source color (we're spreading 1 source pixel's worth across 3 phosphors)
+        // This preserves overall brightness
+        float totalRed = srcColor.r * 3.0;
+        float totalGreen = srcColor.g * 3.0;
+        float totalBlue = srcColor.b * 3.0;
         
         // Distribute RED: left first, then right, then middle
         float redLeft = min(totalRed, 1.0);
@@ -286,16 +283,16 @@ void main() {
         blueRemaining = max(blueRemaining - 1.0, 0.0);
         float blueLeft = min(blueRemaining, 1.0);
         
-        // Select the color values for this pixel position
+        // Select the color values for this phosphor
         vec3 myColor = vec3(0.0);
-        if(posInt == 0) {
-            // Left pixel
+        if(phosphorIdx == 0) {
+            // Left phosphor (2x2 block)
             myColor = vec3(redLeft, greenLeft, blueLeft);
-        } else if(posInt == 1) {
-            // Middle pixel
+        } else if(phosphorIdx == 1) {
+            // Middle phosphor (2x2 block)
             myColor = vec3(redMiddle, greenMiddle, blueMiddle);
         } else {
-            // Right pixel
+            // Right phosphor (2x2 block)
             myColor = vec3(redRight, greenRight, blueRight);
         }
         
