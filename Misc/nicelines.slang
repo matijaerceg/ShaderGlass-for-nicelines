@@ -270,31 +270,91 @@ void main() {
         float triadW = phosphorW * 3.0;  // Total triad width = 3 phosphors
         float triadH = global.TRIAD_HEIGHT;
         
-        // Which triad are we in, and which phosphor within it?
+        // Which triad column are we in?
         float triadIdxX = floor(px.x / triadW);
         float withinTriadX = mod(px.x, triadW);
         int phosphorIdx = int(floor(withinTriadX / phosphorW));  // 0=left, 1=middle, 2=right
         phosphorIdx = min(phosphorIdx, 2);  // Clamp to valid range
         
-        // Vertical: which triad row are we in?
-        float triadIdxY = floor(px.y / triadH);
+        // Vertical zigzag offset for alternating columns (when triad height > 1)
+        // Offset = ceil(triadH / 2) for odd columns
+        float zigzagOffset = 0.0;
+        if(triadH > 1.0 && mod(triadIdxX, 2.0) >= 1.0) {
+            zigzagOffset = ceil(triadH / 2.0);
+        }
         
-        // Sample the source at the CENTER of this triad (all pixels in triad use same color)
-        float triadCenterX = (triadIdxX * triadW + triadW * 0.5) / global.OutputSize.x;
-        vec2 triadCenterUV = vec2(triadCenterX, sampleUV.y);
+        // Apply zigzag to Y position before calculating triad row
+        float adjustedPxY = px.y - zigzagOffset;
+        float triadIdxY = floor(adjustedPxY / triadH);
         
-        // Get the color at triad center with H_BLUR, processed through scanlines
-        vec3 triadColor = sampleWithHBlur(triadCenterUV, effectiveScale, global.H_BLUR);
-        float triadScanWidth = calcScanlineWidth(triadColor, baseWidth, minWidth, maxWidth);
-        vec3 triadOutput = clamp(triadColor / triadScanWidth, 0.0, 1.0) * scanlineMask;
+        // === AREA SAMPLING: Integrate the ENTIRE triad footprint ===
+        // Sample the FULLY PROCESSED image (blur + H_BLUR + scanlines) at each point
+        // Triad bounds in output pixel space (with zigzag applied)
+        float triadLeftPx = triadIdxX * triadW;
+        float triadTopPx = triadIdxY * triadH + zigzagOffset;
         
-        // Apply brightness boost to triad color
-        triadOutput *= 1.1;
+        // Sample grid: one sample per output pixel in the triad
+        int samplesX = max(int(triadW), 1);
+        int samplesY = max(int(triadH), 1);
         
-        // Total energy is 3x the color (spreading across 3 phosphors)
-        float totalRed = triadOutput.r * 3.0;
-        float totalGreen = triadOutput.g * 3.0;
-        float totalBlue = triadOutput.b * 3.0;
+        vec3 totalEnergy = vec3(0.0);
+        float sampleCount = 0.0;
+        
+        for(int sy = 0; sy < samplesY; sy++) {
+            for(int sx = 0; sx < samplesX; sx++) {
+                // Output pixel position (center of each pixel in the triad)
+                float samplePxX = triadLeftPx + float(sx) + 0.5;
+                float samplePxY = triadTopPx + float(sy) + 0.5;
+                vec2 samplePxPos = vec2(samplePxX, samplePxY);
+                
+                // Convert to UV
+                vec2 sampleUVPos = samplePxPos / global.OutputSize.xy;
+                sampleUVPos = clamp(sampleUVPos, vec2(0.0), vec2(1.0));
+                
+                // === Compute full scanline processing for this sample point ===
+                // Calculate scanline position (CENTER-ANCHORED)
+                float sDistFromCenter = sampleUVPos.y - 0.5;
+                float sScanlineOffset = sDistFromCenter * targetLines;
+                float sScanlinePos = sScanlineOffset;
+                float sScanlineIndex = floor(sScanlinePos);
+                
+                // Sample UV at scanline center (vertical snap)
+                float sSampleScanlinePos = sScanlineIndex + 0.5;
+                float sSampleDistFromCenter = sSampleScanlinePos / targetLines;
+                vec2 sSampleUV = vec2(sampleUVPos.x, clamp(0.5 + sSampleDistFromCenter, 0.0, 1.0));
+                
+                float sWithinScanline = fract(sScanlinePos);
+                
+                // Sample source with blur + H_BLUR
+                vec3 sColor = sampleWithHBlur(sSampleUV, effectiveScale, global.H_BLUR);
+                
+                // Calculate scanline width and energy-preserved color
+                float sScanlineWidth = calcScanlineWidth(sColor, baseWidth, minWidth, maxWidth);
+                vec3 sOutputColor = clamp(sColor / sScanlineWidth, 0.0, 1.0);
+                
+                // Scanline mask with soft edges
+                float sHalfGap = (1.0 - sScanlineWidth) * 0.5;
+                float sScanlineMask = smoothstep(sHalfGap - edgeSoftness, sHalfGap + edgeSoftness, sWithinScanline) *
+                                      smoothstep(1.0 - sHalfGap + edgeSoftness, 1.0 - sHalfGap - edgeSoftness, sWithinScanline);
+                
+                // Final processed color at this sample point
+                vec3 sProcessedColor = sOutputColor * sScanlineMask;
+                
+                totalEnergy += sProcessedColor;
+                sampleCount += 1.0;
+            }
+        }
+        
+        // Average processed color in the triad area
+        vec3 avgColor = totalEnergy / sampleCount;
+        
+        // Apply brightness boost
+        avgColor *= 1.1;
+        
+        // Total energy to distribute across 3 phosphors (multiply by 3)
+        float totalRed = avgColor.r * 3.0;
+        float totalGreen = avgColor.g * 3.0;
+        float totalBlue = avgColor.b * 3.0;
         
         // Spillover distribution
         float redLeft, redMiddle, redRight;
