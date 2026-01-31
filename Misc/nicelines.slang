@@ -18,7 +18,9 @@
 #pragma parameter PHOSPHOR_WIDTH "TRIAD Phosphor Width (px)" 1.0 1.0 20.0 1.0
 #pragma parameter TRIAD_HEIGHT "TRIAD Height (px)" 1.0 1.0 20.0 1.0
 #pragma parameter SPILLOVER_MODE "TRIAD Spillover (Linear/Curved)" 0.0 0.0 1.0 1.0
-#pragma parameter CURVE_STRENGTH "TRIAD Curve Strength" 2.0 1.0 5.0 0.1
+#pragma parameter CURVE_PRIMARY "TRIAD Curve PRIMARY (0=linear, -=concave, +=convex)" 0.0 -3.0 3.0 0.1
+#pragma parameter CURVE_SECONDARY "TRIAD Curve SECONDARY (0=linear, -=concave, +=convex)" 0.0 -3.0 3.0 0.1
+#pragma parameter CURVE_TERTIARY "TRIAD Curve TERTIARY (0=linear, -=concave, +=convex)" 0.0 -3.0 3.0 0.1
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
@@ -39,7 +41,9 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float PHOSPHOR_WIDTH;
     float TRIAD_HEIGHT;
     float SPILLOVER_MODE;
-    float CURVE_STRENGTH;
+    float CURVE_PRIMARY;
+    float CURVE_SECONDARY;
+    float CURVE_TERTIARY;
 } global;
 
 // === VERTEX STAGE ===
@@ -385,32 +389,29 @@ void main() {
             blueLeft = min(blueRemaining, 1.0);
         } else {
             // === CURVED SPILLOVER ===
-            // Primary: steep curve in lows (fills quickly)
-            // Secondary: linear
-            // Tertiary: steep curve in highs (fills late)
-            float curve = global.CURVE_STRENGTH;
-            
-            // Helper: apply curve. pow(x, 1/curve) = steep in lows, pow(x, curve) = steep in highs
-            // For primary (steep in lows): use pow(normalized, 1/curve) - fills fast at low values
-            // For tertiary (steep in highs): use pow(normalized, curve) - fills slow until high values
+            // Each tier has its own curve: slider 0 = linear, negative = concave, positive = convex
+            // Exponent = 2^slider: -1 → 0.5 (concave), 0 → 1 (linear), +1 → 2 (convex)
+            float expPrimary = pow(2.0, global.CURVE_PRIMARY);
+            float expSecondary = pow(2.0, global.CURVE_SECONDARY);
+            float expTertiary = pow(2.0, global.CURVE_TERTIARY);
             
             // RED: primary=left, secondary=right, tertiary=middle
             float rNorm = totalRed / 3.0;  // Normalize to 0-1 range
-            redLeft = pow(clamp(rNorm, 0.0, 1.0), 1.0/curve);  // Steep in lows
-            redRight = clamp(rNorm, 0.0, 1.0);  // Linear
-            redMiddle = pow(clamp(rNorm, 0.0, 1.0), curve);  // Steep in highs
+            redLeft = pow(clamp(rNorm, 0.0, 1.0), expPrimary);
+            redRight = pow(clamp(rNorm, 0.0, 1.0), expSecondary);
+            redMiddle = pow(clamp(rNorm, 0.0, 1.0), expTertiary);
             
             // GREEN: primary=middle, secondary=left, tertiary=right
             float gNorm = totalGreen / 3.0;
-            greenMiddle = pow(clamp(gNorm, 0.0, 1.0), 1.0/curve);  // Steep in lows
-            greenLeft = clamp(gNorm, 0.0, 1.0);  // Linear
-            greenRight = pow(clamp(gNorm, 0.0, 1.0), curve);  // Steep in highs
+            greenMiddle = pow(clamp(gNorm, 0.0, 1.0), expPrimary);
+            greenLeft = pow(clamp(gNorm, 0.0, 1.0), expSecondary);
+            greenRight = pow(clamp(gNorm, 0.0, 1.0), expTertiary);
             
             // BLUE: primary=right, secondary=middle, tertiary=left
             float bNorm = totalBlue / 3.0;
-            blueRight = pow(clamp(bNorm, 0.0, 1.0), 1.0/curve);  // Steep in lows
-            blueMiddle = clamp(bNorm, 0.0, 1.0);  // Linear
-            blueLeft = pow(clamp(bNorm, 0.0, 1.0), curve);  // Steep in highs
+            blueRight = pow(clamp(bNorm, 0.0, 1.0), expPrimary);
+            blueMiddle = pow(clamp(bNorm, 0.0, 1.0), expSecondary);
+            blueLeft = pow(clamp(bNorm, 0.0, 1.0), expTertiary);
         }
         
         // Select the color values for this phosphor
