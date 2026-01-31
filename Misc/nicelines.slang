@@ -111,6 +111,24 @@ vec3 sampleWithBlur(vec2 uv, float effectiveScale) {
     return color;
 }
 
+// Sample source with optional H_BLUR applied (5-tap tent filter)
+vec3 sampleWithHBlur(vec2 uv, float effectiveScale, float hBlur) {
+    if(hBlur > 0.001) {
+        float pixelSize = 1.0 / global.OutputSize.x;
+        float blurRadius = hBlur * pixelSize;
+        
+        vec3 cC = SrgbToLinear3(sampleWithBlur(uv, effectiveScale));
+        vec3 cL1 = SrgbToLinear3(sampleWithBlur(vec2(uv.x - blurRadius * 0.5, uv.y), effectiveScale));
+        vec3 cL2 = SrgbToLinear3(sampleWithBlur(vec2(uv.x - blurRadius, uv.y), effectiveScale));
+        vec3 cR1 = SrgbToLinear3(sampleWithBlur(vec2(uv.x + blurRadius * 0.5, uv.y), effectiveScale));
+        vec3 cR2 = SrgbToLinear3(sampleWithBlur(vec2(uv.x + blurRadius, uv.y), effectiveScale));
+        
+        return cL2 * 0.1 + cL1 * 0.2 + cC * 0.4 + cR1 * 0.2 + cR2 * 0.1;
+    } else {
+        return SrgbToLinear3(sampleWithBlur(uv, effectiveScale));
+    }
+}
+
 void main() {
     float baseWidth = 0.3;   // Hardcoded thickness baseline
     float minWidth = 0.5;    // Hardcoded thickness min
@@ -213,9 +231,8 @@ void main() {
     
     float withinScanline = fract(scanlinePos);
     
-    // Sample source with blur
-    vec3 color = sampleWithBlur(sampleUV, effectiveScale);
-    color = SrgbToLinear3(color);
+    // === SAMPLE SOURCE WITH HORIZONTAL BLUR (applied early so scanlines and triads both see it) ===
+    vec3 color = sampleWithHBlur(sampleUV, effectiveScale, global.H_BLUR);
     
     // Calculate scanline width and energy-preserved color
     float scanlineWidth = calcScanlineWidth(color, baseWidth, minWidth, maxWidth);
@@ -230,34 +247,6 @@ void main() {
                    smoothstep(1.0 - halfGap + edgeSoftness, 1.0 - halfGap - edgeSoftness, withinScanline);
     
     finalColor = outputColor * scanlineMask;
-    
-    // Horizontal blur on final output (cheap 5-tap tent filter)
-    if(global.H_BLUR > 0.001) {
-        float pixelSize = 1.0 / global.OutputSize.x;
-        float blurRadius = global.H_BLUR * pixelSize;
-        
-        vec2 uvL1 = vec2(displacedUV.x - blurRadius * 0.5, sampleUV.y);
-        vec2 uvL2 = vec2(displacedUV.x - blurRadius, sampleUV.y);
-        vec2 uvR1 = vec2(displacedUV.x + blurRadius * 0.5, sampleUV.y);
-        vec2 uvR2 = vec2(displacedUV.x + blurRadius, sampleUV.y);
-        
-        vec3 srcL1 = SrgbToLinear3(sampleWithBlur(uvL1, effectiveScale));
-        vec3 srcL2 = SrgbToLinear3(sampleWithBlur(uvL2, effectiveScale));
-        vec3 srcR1 = SrgbToLinear3(sampleWithBlur(uvR1, effectiveScale));
-        vec3 srcR2 = SrgbToLinear3(sampleWithBlur(uvR2, effectiveScale));
-        
-        float wL1 = calcScanlineWidth(srcL1, baseWidth, minWidth, maxWidth);
-        float wL2 = calcScanlineWidth(srcL2, baseWidth, minWidth, maxWidth);
-        float wR1 = calcScanlineWidth(srcR1, baseWidth, minWidth, maxWidth);
-        float wR2 = calcScanlineWidth(srcR2, baseWidth, minWidth, maxWidth);
-        
-        vec3 cL1 = clamp(srcL1 / wL1, 0.0, 1.0) * scanlineMask;
-        vec3 cL2 = clamp(srcL2 / wL2, 0.0, 1.0) * scanlineMask;
-        vec3 cR1 = clamp(srcR1 / wR1, 0.0, 1.0) * scanlineMask;
-        vec3 cR2 = clamp(srcR2 / wR2, 0.0, 1.0) * scanlineMask;
-        
-        finalColor = (cL2 * 0.1 + cL1 * 0.2 + finalColor * 0.4 + cR1 * 0.2 + cR2 * 0.1);
-    }
     
     // Compare mode divider line
     if(global.COMPARE_MODE > 0.5 && abs(vTexCoord.x - 0.5) < 0.002) {
@@ -275,8 +264,8 @@ void main() {
         float triadCenterX = (triadIdx * 3.0 + 1.5) / global.OutputSize.x;
         vec2 triadCenterUV = vec2(triadCenterX, sampleUV.y);
         
-        // Get the color at triad center, processed through scanlines
-        vec3 triadColor = SrgbToLinear3(sampleWithBlur(triadCenterUV, effectiveScale));
+        // Get the color at triad center with H_BLUR, processed through scanlines
+        vec3 triadColor = sampleWithHBlur(triadCenterUV, effectiveScale, global.H_BLUR);
         float triadWidth = calcScanlineWidth(triadColor, baseWidth, minWidth, maxWidth);
         vec3 triadOutput = clamp(triadColor / triadWidth, 0.0, 1.0) * scanlineMask;
         
