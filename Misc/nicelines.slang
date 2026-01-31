@@ -231,77 +231,8 @@ void main() {
     
     finalColor = outputColor * scanlineMask;
     
-    // === MODE 2: TRIAD-BASED SHADOW MASK ===
-    // 6x2 output pixels form one triad, containing three 2x2 phosphors (left/middle/right)
-    if(shadowMode == 2) {
-        // Find which output pixel triad we're in
-        // Triads are 6 pixels wide, 2 pixels tall
-        float triadIdxX = floor(px.x / 6.0);     // Which triad column
-        float triadIdxY = floor(px.y / 2.0);     // Which triad row
-        float posInTriadX = mod(px.x, 6.0);      // Position within triad (0-5)
-        
-        // Which 2x2 phosphor are we in? (0=left, 1=middle, 2=right)
-        int phosphorIdx = int(floor(posInTriadX / 2.0));
-        
-        // Sample the source region underneath this 6x2 triad
-        // Triad covers output pixels [triadIdxX*6, triadIdxX*6+6) x [triadIdxY*2, triadIdxY*2+2)
-        // Convert to UV: center of the 6x2 region
-        float triadCenterX = (triadIdxX * 6.0 + 3.0) / global.OutputSize.x;
-        float triadCenterY = (triadIdxY * 2.0 + 1.0) / global.OutputSize.y;
-        
-        // Sample a small area around the triad center (using existing blur mechanism)
-        vec2 triadUV = vec2(triadCenterX, triadCenterY);
-        triadUV = clamp(triadUV, vec2(0.0), vec2(1.0));
-        
-        // Sample source at triad center (blur will naturally average the region)
-        vec3 srcColor = SrgbToLinear3(sampleWithBlur(triadUV, effectiveScale));
-        
-        // Total energy is 3x the source color (we're spreading 1 source pixel's worth across 3 phosphors)
-        // This preserves overall brightness
-        float totalRed = srcColor.r * 3.0;
-        float totalGreen = srcColor.g * 3.0;
-        float totalBlue = srcColor.b * 3.0;
-        
-        // Distribute RED: left first, then right, then middle
-        float redLeft = min(totalRed, 1.0);
-        float redRemaining = max(totalRed - 1.0, 0.0);
-        float redRight = min(redRemaining, 1.0);
-        redRemaining = max(redRemaining - 1.0, 0.0);
-        float redMiddle = min(redRemaining, 1.0);
-        
-        // Distribute GREEN: middle first, then left, then right
-        float greenMiddle = min(totalGreen, 1.0);
-        float greenRemaining = max(totalGreen - 1.0, 0.0);
-        float greenLeft = min(greenRemaining, 1.0);
-        greenRemaining = max(greenRemaining - 1.0, 0.0);
-        float greenRight = min(greenRemaining, 1.0);
-        
-        // Distribute BLUE: right first, then middle, then left
-        float blueRight = min(totalBlue, 1.0);
-        float blueRemaining = max(totalBlue - 1.0, 0.0);
-        float blueMiddle = min(blueRemaining, 1.0);
-        blueRemaining = max(blueRemaining - 1.0, 0.0);
-        float blueLeft = min(blueRemaining, 1.0);
-        
-        // Select the color values for this phosphor
-        vec3 myColor = vec3(0.0);
-        if(phosphorIdx == 0) {
-            // Left phosphor (2x2 block)
-            myColor = vec3(redLeft, greenLeft, blueLeft);
-        } else if(phosphorIdx == 1) {
-            // Middle phosphor (2x2 block)
-            myColor = vec3(redMiddle, greenMiddle, blueMiddle);
-        } else {
-            // Right phosphor (2x2 block)
-            myColor = vec3(redRight, greenRight, blueRight);
-        }
-        
-        finalColor = myColor * scanlineMask;
-    }
-    
     // Horizontal blur on final output (cheap 5-tap tent filter)
-    // Skip blur in triad mode (shadowMode == 2) as it would break the effect
-    if(global.H_BLUR > 0.001 && shadowMode != 2) {
+    if(global.H_BLUR > 0.001) {
         float pixelSize = 1.0 / global.OutputSize.x;
         float blurRadius = global.H_BLUR * pixelSize;
         
@@ -335,6 +266,52 @@ void main() {
     
     // Apply brightness boost (hardcoded for now)
     finalColor *= 1.1;
+
+    // === MODE 2: TRIAD-BASED SHADOW MASK (APPLIED LAST) ===
+    // 6x2 output pixels form one triad, containing three 2x2 phosphors (left/middle/right)
+    if(shadowMode == 2) {
+        // Which 2x2 phosphor are we in? (0=left, 1=middle, 2=right)
+        int phosphorIdx = int(floor(mod(px.x, 6.0) / 2.0));
+        
+        // Use the already-processed finalColor (with scanlines, blur, brightness applied)
+        // Total energy is 3x the color (spreading across 3 phosphors)
+        float totalRed = finalColor.r * 3.0;
+        float totalGreen = finalColor.g * 3.0;
+        float totalBlue = finalColor.b * 3.0;
+        
+        // Distribute RED: left first, then right, then middle
+        float redLeft = min(totalRed, 1.0);
+        float redRemaining = max(totalRed - 1.0, 0.0);
+        float redRight = min(redRemaining, 1.0);
+        redRemaining = max(redRemaining - 1.0, 0.0);
+        float redMiddle = min(redRemaining, 1.0);
+        
+        // Distribute GREEN: middle first, then left, then right
+        float greenMiddle = min(totalGreen, 1.0);
+        float greenRemaining = max(totalGreen - 1.0, 0.0);
+        float greenLeft = min(greenRemaining, 1.0);
+        greenRemaining = max(greenRemaining - 1.0, 0.0);
+        float greenRight = min(greenRemaining, 1.0);
+        
+        // Distribute BLUE: right first, then middle, then left
+        float blueRight = min(totalBlue, 1.0);
+        float blueRemaining = max(totalBlue - 1.0, 0.0);
+        float blueMiddle = min(blueRemaining, 1.0);
+        blueRemaining = max(blueRemaining - 1.0, 0.0);
+        float blueLeft = min(blueRemaining, 1.0);
+        
+        // Select the color values for this phosphor
+        if(phosphorIdx == 0) {
+            // Left phosphor (2x2 block)
+            finalColor = vec3(redLeft, greenLeft, blueLeft);
+        } else if(phosphorIdx == 1) {
+            // Middle phosphor (2x2 block)
+            finalColor = vec3(redMiddle, greenMiddle, blueMiddle);
+        } else {
+            // Right phosphor (2x2 block)
+            finalColor = vec3(redRight, greenRight, blueRight);
+        }
+    }
 
     FragColor = vec4(LinearToSrgb3(finalColor), 1.0);
 }
