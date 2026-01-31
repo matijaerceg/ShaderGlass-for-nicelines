@@ -10,7 +10,7 @@
 #pragma parameter H_BLUR "HORIZONTAL BLUR (worn out tube look)" 1.0 0.0 8.0 0.1
 
 // === SUBPIXEL NOISE PARAMETERS ===
-#pragma parameter SUBPIXEL_NOISE "SHADOW MASK Off/On" 1.0 0.0 1.0 1.0
+#pragma parameter SUBPIXEL_NOISE "SHADOW MASK Off/Swap/Triad" 1.0 0.0 2.0 1.0
 #pragma parameter SHADOW_STRENGTH "Shadow Mask STRENGTH (1-3)" 2.0 1.0 3.0 1.0
 #pragma parameter SHIMMER_NOISE "Shimmering NOISE Effect (Requires Shadow Mask Effect ON)" 0.0 0.0 1.0 1.0
 
@@ -161,7 +161,11 @@ void main() {
     vec2 px = vTexCoord * global.OutputSize.xy;
     vec2 srcPx = px;
     
-    if(global.SUBPIXEL_NOISE > 0.5) {
+    // Mode selection: 0=off, 1=swap, 2=triad
+    int shadowMode = int(global.SUBPIXEL_NOISE + 0.5);
+    
+    if(shadowMode == 1) {
+        // Mode 1: Original horizontal swap shadow mask
         // Seed: random each frame if shimmer enabled, otherwise fixed
         float seed = (global.SHIMMER_NOISE > 0.5) ? float(global.FrameCount) : 0.0;
         
@@ -227,8 +231,52 @@ void main() {
     
     finalColor = outputColor * scanlineMask;
     
+    // === MODE 2: TRIAD-BASED SHADOW MASK (TEST - RED ONLY) ===
+    if(shadowMode == 2) {
+        // Find which output pixel triad we're in (groups of 3)
+        float outX = px.x;
+        float triadIdx = floor(outX / 3.0);      // Which triad (0, 1, 2, ...)
+        float posInTriad = mod(outX, 3.0);       // Position within triad (0=left, 1=middle, 2=right)
+        int posInt = int(posInTriad);
+        
+        // The 3 source pixels "behind" this triad
+        // Map triad index to source pixel position (3:1 horizontal reduction)
+        float srcTriadCenter = (triadIdx * 3.0 + 1.5) / global.OutputSize.x;
+        float srcPixelSize = 1.0 / global.SourceSize.x;
+        
+        // Sample the 3 source pixels in this triad's source region
+        vec2 srcUV0 = vec2(srcTriadCenter - srcPixelSize, sampleUV.y);
+        vec2 srcUV1 = vec2(srcTriadCenter, sampleUV.y);
+        vec2 srcUV2 = vec2(srcTriadCenter + srcPixelSize, sampleUV.y);
+        
+        vec3 src0 = SrgbToLinear3(sampleWithBlur(srcUV0, effectiveScale));
+        vec3 src1 = SrgbToLinear3(sampleWithBlur(srcUV1, effectiveScale));
+        vec3 src2 = SrgbToLinear3(sampleWithBlur(srcUV2, effectiveScale));
+        
+        // Total red energy from the 3 source pixels
+        float totalRed = src0.r + src1.r + src2.r;
+        
+        // Distribute red: left first, then right, then middle
+        // Each output pixel can hold max 1.0
+        float redLeft = min(totalRed, 1.0);
+        float redRemaining = max(totalRed - 1.0, 0.0);
+        float redRight = min(redRemaining, 1.0);
+        redRemaining = max(redRemaining - 1.0, 0.0);
+        float redMiddle = min(redRemaining, 1.0);
+        
+        // Select the red value for this pixel position
+        float myRed = 0.0;
+        if(posInt == 0) myRed = redLeft;
+        else if(posInt == 2) myRed = redRight;
+        else myRed = redMiddle;
+        
+        // For now, just show red channel (green and blue zeroed for testing)
+        finalColor = vec3(myRed, 0.0, 0.0) * scanlineMask;
+    }
+    
     // Horizontal blur on final output (cheap 5-tap tent filter)
-    if(global.H_BLUR > 0.001) {
+    // Skip blur in triad mode (shadowMode == 2) as it would break the effect
+    if(global.H_BLUR > 0.001 && shadowMode != 2) {
         float pixelSize = 1.0 / global.OutputSize.x;
         float blurRadius = global.H_BLUR * pixelSize;
         
