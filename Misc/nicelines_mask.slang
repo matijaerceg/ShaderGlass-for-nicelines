@@ -14,6 +14,11 @@
 
 // === PARAMETERS ===
 #pragma parameter SHADOW_MASK_MODE "SHADOW MASK (Off / Single / Double)" 1.0 0.0 2.0 1.0
+#pragma parameter MASK_CLIPSAFE_STRENGTH "MASK: ClipSafe Strength" 1.0 0.0 1.0 0.01
+#pragma parameter MASK_CLIPSAFE_CURVE "MASK: ClipSafe Luma Curve" 1.0 0.2 4.0 0.05
+#pragma parameter MASK_CLIPSAFE_CUTOFF "MASK: ClipSafe Luma Cutoff" 0.42 0.05 1.0 0.01
+#pragma parameter MASK_ENABLE_GAIN "MASK DEBUG: Enable Post Gain" 0.0 0.0 1.0 1.0
+#pragma parameter MASK_GAIN "MASK DEBUG: Post Gain" 1.18 0.8 1.3 0.01
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
@@ -22,6 +27,11 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     vec4 OutputSize;
     uint FrameCount;
     float SHADOW_MASK_MODE;
+    float MASK_CLIPSAFE_STRENGTH;
+    float MASK_CLIPSAFE_CURVE;
+    float MASK_CLIPSAFE_CUTOFF;
+    float MASK_ENABLE_GAIN;
+    float MASK_GAIN;
 } global;
 
 // === VERTEX STAGE ===
@@ -99,12 +109,13 @@ void main() {
         }
     }
     vec3 avgColor = totalEnergy / sampleCount;
+    vec3 sourceColor = avgColor;
 
     // Per-channel piecewise distribution.
     // Factor 4 stays valid in both widths because each channel bucket area remains 1/4 of triad area.
-    vec3 primaryVal   = min(avgColor * 4.0, vec3(1.0));
-    vec3 secondaryVal = clamp((avgColor * 4.0 - vec3(1.0)) * 0.5, vec3(0.0), vec3(1.0));
-    vec3 gutterVal    = clamp(avgColor * 4.0 - vec3(3.0), vec3(0.0), vec3(1.0));
+    vec3 primaryVal   = min(sourceColor * 4.0, vec3(1.0));
+    vec3 secondaryVal = clamp((sourceColor * 4.0 - vec3(1.0)) * 0.5, vec3(0.0), vec3(1.0));
+    vec3 gutterVal    = clamp(sourceColor * 4.0 - vec3(3.0), vec3(0.0), vec3(1.0));
 
     vec3 finalColor;
     if(rowIdx == 3) {
@@ -117,15 +128,23 @@ void main() {
         finalColor.b = (colIdx == 2) ? primaryVal.b : secondaryVal.b;
     }
 
-    // Clip-safe blend (adapted from prior anti-clipping fix):
-    // Blend masked output toward triad average by user amount.
-    // This keeps triad-average energy stable while reducing dim/clippy appearance.
-    const float clipSafe = 0.5;
-    finalColor = mix(finalColor, avgColor, clipSafe);
+    // Luma-adaptive ClipSafe:
+    // - Darks use more ClipSafe (toward sourceColor)
+    // - Brights use less ClipSafe (toward raw mask distribution)
+    // - At/above cutoff, ClipSafe is fully disabled.
+    float sourceLuma = dot(sourceColor, vec3(0.2126, 0.7152, 0.0722));
+    float cutoff = max(global.MASK_CLIPSAFE_CUTOFF, 0.0001);
+    float lumaT = clamp(sourceLuma / cutoff, 0.0, 1.0);
+    float curve = max(global.MASK_CLIPSAFE_CURVE, 0.001);
+    float unsafeAmount = pow(lumaT, curve);
+    float clipSafe = (1.0 - unsafeAmount) * clamp(global.MASK_CLIPSAFE_STRENGTH, 0.0, 1.0);
+    finalColor = mix(finalColor, sourceColor, clipSafe);
 
     // Explicit post-mask brightness compensation for displays where
     // intra-triad redistribution is perceptually subtle.
-    finalColor *= 1.18;
+    if(global.MASK_ENABLE_GAIN >= 0.5) {
+        finalColor *= global.MASK_GAIN;
+    }
 
     FragColor = vec4(finalColor, 1.0);
 }
