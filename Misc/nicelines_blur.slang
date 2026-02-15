@@ -1,0 +1,132 @@
+#version 450
+// nicelines v18 (2026-02-14)
+
+// === PASS 0: DOWNSCALE BLUR ===
+// This pass handles: downscale blur prepass and horizontal blur
+// Output: blurred image in linear space (float framebuffer)
+
+// === PARAMETERS ===
+#pragma parameter BLUR_OFFSET "BEAM FOCUS" 0.05 -0.04 0.12 0.01
+#pragma parameter H_BLUR "HORIZONTAL SMEAR" 1.0 0.0 8.0 0.1
+#pragma parameter SCANLINE_MODE "180p / 224p / 240p / 270p / 360p / MANUAL" 2.0 0.0 5.0 1.0
+#pragma parameter MANUAL_LINES "MANUAL Scanline Count" 360.0 120.0 480.0 5.0
+#pragma parameter AUTO_LINES "SCANLINE ROUNDING (for 3D; anti-moire)" 0.0 0.0 1.0 1.0
+
+layout(std140, set = 0, binding = 0) uniform UBO {
+    mat4 MVP;
+    vec4 SourceSize;
+    vec4 OriginalSize;
+    vec4 OutputSize;
+    uint FrameCount;
+    float BLUR_OFFSET;
+    float H_BLUR;
+    float SCANLINE_MODE;
+    float MANUAL_LINES;
+    float AUTO_LINES;
+} global;
+
+#pragma stage vertex
+layout(location = 0) in vec4 Position;
+layout(location = 1) in vec2 TexCoord;
+layout(location = 0) out vec2 vTexCoord;
+
+void main() {
+    gl_Position = global.MVP * Position;
+    vTexCoord = TexCoord;
+}
+
+#pragma stage fragment
+layout(location = 0) in vec2 vTexCoord;
+layout(location = 0) out vec4 FragColor;
+layout(set = 0, binding = 2) uniform sampler2D Source;
+
+float SrgbToLinear(float c) {
+    return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);
+}
+
+vec3 SrgbToLinear3(vec3 c) {
+    return vec3(SrgbToLinear(c.r), SrgbToLinear(c.g), SrgbToLinear(c.b));
+}
+
+float getTargetLines() {
+    float targetLines;
+    int mode = int(global.SCANLINE_MODE + 0.5);
+    if(mode == 0) {
+        targetLines = 180.0;
+    } else if(mode == 1) {
+        targetLines = 224.0;
+    } else if(mode == 2) {
+        targetLines = 240.0;
+    } else if(mode == 3) {
+        targetLines = 270.0;
+    } else if(mode == 4) {
+        targetLines = 360.0;
+    } else {
+        targetLines = global.MANUAL_LINES;
+    }
+
+    if(global.AUTO_LINES > 0.5) {
+        float outputHeight = global.OutputSize.y;
+        float idealPixelsPerLine = outputHeight / targetLines;
+        float pixelsPerLine = max(1.0, round(idealPixelsPerLine));
+        targetLines = outputHeight / pixelsPerLine;
+    }
+    return targetLines;
+}
+
+vec3 areaAverage(vec2 uv, float effectiveScale) {
+    vec2 texelSize = 1.0 / global.SourceSize.xy;
+    float coverage = 1.0 / effectiveScale;
+    vec2 halfExtent = texelSize * coverage * 0.5;
+
+    int samplesX = clamp(int(ceil(coverage)), 1, 8);
+    int samplesY = clamp(int(ceil(coverage)), 1, 8);
+
+    vec3 sum = vec3(0.0);
+    float count = 0.0;
+
+    for(int sy = 0; sy < samplesY; sy++) {
+        for(int sx = 0; sx < samplesX; sx++) {
+            vec2 offset = vec2(
+                mix(-halfExtent.x, halfExtent.x, (float(sx) + 0.5) / float(samplesX)),
+                mix(-halfExtent.y, halfExtent.y, (float(sy) + 0.5) / float(samplesY))
+            );
+            vec2 sampleUV = clamp(uv + offset, vec2(0.0), vec2(1.0));
+            sum += SrgbToLinear3(texture(Source, sampleUV).rgb);
+            count += 1.0;
+        }
+    }
+    return sum / count;
+}
+
+vec3 sampleWithBlur(vec2 uv, float effectiveScale) {
+    if(effectiveScale >= 0.999) {
+        return SrgbToLinear3(texture(Source, uv).rgb);
+    }
+    return areaAverage(uv, effectiveScale);
+}
+
+vec3 sampleWithHBlur(vec2 uv, float effectiveScale, float hBlur) {
+    if(hBlur > 0.001) {
+        float pixelSize = 1.0 / global.OutputSize.x;
+        float blurRadius = hBlur * pixelSize;
+
+        vec3 cC  = sampleWithBlur(uv, effectiveScale);
+        vec3 cL1 = sampleWithBlur(vec2(uv.x - blurRadius * 0.5, uv.y), effectiveScale);
+        vec3 cL2 = sampleWithBlur(vec2(uv.x - blurRadius, uv.y), effectiveScale);
+        vec3 cR1 = sampleWithBlur(vec2(uv.x + blurRadius * 0.5, uv.y), effectiveScale);
+        vec3 cR2 = sampleWithBlur(vec2(uv.x + blurRadius, uv.y), effectiveScale);
+
+        return cL2 * 0.1 + cL1 * 0.2 + cC * 0.4 + cR1 * 0.2 + cR2 * 0.1;
+    }
+    return sampleWithBlur(uv, effectiveScale);
+}
+
+void main() {
+    float targetLines = getTargetLines();
+    float baselineScale = targetLines / global.SourceSize.y;
+    float effectiveScale = clamp(baselineScale + global.BLUR_OFFSET, 0.02, 1.0);
+
+    vec3 color = sampleWithHBlur(vTexCoord, effectiveScale, global.H_BLUR);
+    FragColor = vec4(color, 1.0);
+}
