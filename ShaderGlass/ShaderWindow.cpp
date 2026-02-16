@@ -1831,6 +1831,7 @@ LRESULT CALLBACK ShaderWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
         case ID_GLOBALHOTKEYS_SHOWMENU:
         case ID_GLOBALHOTKEYS_PARAMETERS:
         case ID_GLOBALHOTKEYS_RELOAD:
+        case ID_GLOBALHOTKEYS_AUTODETECT:
         case ID_GLOBALHOTKEYS_CURSOR: {
             auto globalState = GetHotkeyState();
             if(globalState)
@@ -2082,6 +2083,9 @@ LRESULT CALLBACK ShaderWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
             break;
         case ID_GLOBALHOTKEYS_RELOAD:
             SendMessage(hWnd, WM_COMMAND, IDM_SHADER_RELOAD, 0);
+            break;
+        case ID_GLOBALHOTKEYS_AUTODETECT:
+            SendMessage(hWnd, WM_COMMAND, ID_PIXELROW_AUTODETECT_NOW, 0);
             break;
         case ID_GLOBALHOTKEYS_PAUSE:
             if(m_captureManager.IsActive())
@@ -2932,6 +2936,12 @@ void ShaderWindow::UpdateHotkey(const HotkeyInfo& hk, bool globalState)
         _snwprintf_s(text, 100, L"Reload Current Shader... (%s)", menuKeyString.c_str());
         ModifyMenu(m_hotkeysMenu, ID_GLOBALHOTKEYS_RELOAD, MF_BYCOMMAND | MF_STRING, ID_GLOBALHOTKEYS_RELOAD, text);
         break;
+    case ID_GLOBALHOTKEYS_AUTODETECT:
+        _snwprintf_s(text, 60, L"Auto-detect now\t%s", keyString.c_str());
+        ModifyMenu(m_pixelRowDetectMenu, ID_PIXELROW_AUTODETECT_NOW, MF_BYCOMMAND | MF_STRING, ID_PIXELROW_AUTODETECT_NOW, text);
+        _snwprintf_s(text, 100, L"Auto-detect Pixel Rows... (%s)", menuKeyString.c_str());
+        ModifyMenu(m_hotkeysMenu, ID_GLOBALHOTKEYS_AUTODETECT, MF_BYCOMMAND | MF_STRING, ID_GLOBALHOTKEYS_AUTODETECT, text);
+        break;
     }
 }
 
@@ -2945,6 +2955,8 @@ void ShaderWindow::LoadHotkeys()
     m_hotkeys.emplace(ID_GLOBALHOTKEYS_SHOWMENU, HotkeyInfo(ID_GLOBALHOTKEYS_SHOWMENU, 0, L"Menu Key", L"m"));
     m_hotkeys.emplace(ID_GLOBALHOTKEYS_PARAMETERS, HotkeyInfo(ID_GLOBALHOTKEYS_PARAMETERS, MAKEWORD('P', MOD_CONTROL | MOD_SHIFT), L"Parameters Key", L"p"));
     m_hotkeys.emplace(ID_GLOBALHOTKEYS_RELOAD, HotkeyInfo(ID_GLOBALHOTKEYS_RELOAD, MAKEWORD('R', MOD_CONTROL | MOD_SHIFT), L"Reload Shader Key", L"r"));
+    m_hotkeys.emplace(ID_GLOBALHOTKEYS_AUTODETECT,
+                      HotkeyInfo(ID_GLOBALHOTKEYS_AUTODETECT, MAKEWORD('A', MOD_CONTROL | MOD_SHIFT), L"Auto Detect Pixel Rows Key", L"a"));
 }
 
 void ShaderWindow::UpdateHotkeys(bool globalHotkeys)
