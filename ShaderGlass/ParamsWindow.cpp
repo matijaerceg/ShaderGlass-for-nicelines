@@ -22,6 +22,32 @@ constexpr int WINDOW_HEIGHT = 600;
 constexpr int TRACK_WIDTH   = 200;
 constexpr int TRACK_HEIGHT  = 30;
 
+namespace
+{
+bool IsBinaryParam(const ShaderParam& param)
+{
+    if(param.maxValue == param.minValue || param.stepValue <= 0.0f)
+    {
+        return false;
+    }
+
+    float span = param.maxValue - param.minValue;
+    if(span <= 0.0f)
+    {
+        return false;
+    }
+
+    float effectiveSteps = span / param.stepValue;
+    if(effectiveSteps <= 0.0f)
+    {
+        return false;
+    }
+
+    int roundedSteps = (int)roundf(effectiveSteps);
+    return roundedSteps == 1 && fabsf(effectiveSteps - roundedSteps) < 0.0001f;
+}
+} // namespace
+
 ParamsWindow::ParamsWindow(CaptureManager& captureManager) :
     m_captureManager(captureManager), m_captureOptions(captureManager.m_options), m_title(), m_windowClass(), m_resetButtonWnd(0), m_closeButtonWnd(0), m_font(0), m_dpiScale(1.0f),
     m_hwndTip(NULL)
@@ -200,9 +226,12 @@ void ParamsWindow::RebuildControls(bool doResize)
 {
     for(auto& t : m_trackbars)
     {
-        DestroyWindow(t.paramNameWnd);
-        DestroyWindow(t.paramValueWnd);
-        DestroyWindow(t.trackBarWnd);
+        if(t.paramNameWnd)
+            DestroyWindow(t.paramNameWnd);
+        if(t.paramValueWnd)
+            DestroyWindow(t.paramValueWnd);
+        if(t.trackBarWnd)
+            DestroyWindow(t.trackBarWnd);
     }
     if(m_hwndTip)
     {
@@ -245,13 +274,27 @@ void ParamsWindow::RebuildControls(bool doResize)
         const auto& p = std::get<1>(pt);
         if(p->maxValue != p->minValue)
         {
+            bool isBinary = IsBinaryParam(*p);
             int numSteps = 10;
-            if(p->stepValue != 0)
+            if(p->stepValue > 0.0f)
             {
                 numSteps = (int)roundf((p->maxValue - p->minValue) / p->stepValue);
             }
+            if(numSteps < 1)
+            {
+                numSteps = 1;
+            }
             int startValue = (int)roundf(numSteps * (p->currentValue - p->minValue) / (p->maxValue - p->minValue));
-            AddTrackbar(0, numSteps, startValue, numSteps, p->name.c_str(), p);
+            startValue     = std::max(0, std::min(startValue, numSteps));
+
+            if(isBinary)
+            {
+                AddTrackbar(0, 1, startValue > 0 ? 1 : 0, 1, p->name.c_str(), p, true);
+            }
+            else
+            {
+                AddTrackbar(0, numSteps, startValue, numSteps, p->name.c_str(), p);
+            }
         }
     }
 
@@ -358,12 +401,21 @@ LRESULT CALLBACK ParamsWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
         if(lParam != 0)
         {
             id       = GetDlgCtrlID((HWND)lParam);
+            if(id < 0 || id >= (int)m_trackbars.size() || m_trackbars[id].isCheckbox)
+            {
+                return 0;
+            }
             auto pos = SendMessage(m_trackbars[id].trackBarWnd, TBM_GETPOS, 0, 0);
             auto p   = *m_trackbars[id].params.begin();
 
-            float value = p->minValue + (p->maxValue - p->minValue) * pos / m_trackbars[id].steps;
+            float value = p->minValue;
+            if(m_trackbars[id].steps > 0)
+            {
+                value = p->minValue + (p->maxValue - p->minValue) * pos / m_trackbars[id].steps;
+            }
 
-            SetWindowText(m_trackbars[id].paramValueWnd, convertCharArrayToLPCWSTR(std::to_string(value).c_str()));
+            if(m_trackbars[id].paramValueWnd)
+                SetWindowText(m_trackbars[id].paramValueWnd, convertCharArrayToLPCWSTR(std::to_string(value).c_str()));
 
             for(auto& tp : m_trackbars[id].params)
             {
@@ -388,6 +440,24 @@ LRESULT CALLBACK ParamsWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
                 m_captureManager.ResetParams();
                 RebuildControls(true);
             }
+            else if(lParam)
+            {
+                const auto controlHwnd = (HWND)lParam;
+                int        id          = GetDlgCtrlID(controlHwnd);
+                if(id >= 0 && id < (int)m_trackbars.size() && m_trackbars[id].isCheckbox && m_trackbars[id].trackBarWnd == controlHwnd)
+                {
+                    const auto checked = SendMessage(controlHwnd, BM_GETCHECK, 0, 0) == BST_CHECKED;
+                    auto       p       = *m_trackbars[id].params.begin();
+                    float      value   = checked ? p->maxValue : p->minValue;
+
+                    for(auto& tp : m_trackbars[id].params)
+                    {
+                        tp->currentValue = value;
+                    }
+
+                    m_captureManager.UpdateParams();
+                }
+            }
             return 0;
         }
         case IDM_UPDATE_PARAMS: {
@@ -403,60 +473,106 @@ LRESULT CALLBACK ParamsWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
     return DefWindowProc(hWnd, message, wParam, lParam);
 }
 
-void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, const char* name, ShaderParam* p)
+void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, const char* name, ShaderParam* p, bool isCheckbox)
 {
     // de-dupe parameters
     for(auto& t : m_trackbars)
     {
-        if(strcmp(t.paramName, name) == 0 && t.def == iStart && t.steps == iSteps)
+        if(strcmp(t.paramName, name) == 0 && t.def == iStart && t.steps == iSteps && t.isCheckbox == isCheckbox)
         {
             t.params.push_back(p);
             return;
         }
     }
 
-    auto hwndTrack = CreateWindowEx(0,
-                                    TRACKBAR_CLASS,
-                                    L"Trackbar Control",
-                                    WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS,
-                                    (LONG)(m_dpiScale * STATIC_WIDTH),
-                                    (LONG)(m_dpiScale * (m_trackbars.size() * PARAM_HEIGHT + PARAMS_TOP)),
-                                    (LONG)(m_dpiScale * TRACK_WIDTH),
-                                    (LONG)(m_dpiScale * TRACK_HEIGHT),
-                                    m_mainWindow,
-                                    (HMENU)m_trackbars.size(),
-                                    m_instance,
-                                    NULL);
-
-    SendMessage(hwndTrack,
-                TBM_SETRANGE,
-                (WPARAM)TRUE, // redraw flag
-                (LPARAM)MAKELONG(iMin, iMax));
-
-    SendMessage(hwndTrack,
-                TBM_SETPOS,
-                (WPARAM)TRUE, // redraw flag
-                (LPARAM)iStart);
-
-    SendMessage(hwndTrack, WM_SETFONT, (LPARAM)m_font, true);
-
     const char* label   = p->description.size() ? p->description.c_str() : name;
     const char* tooltip = p->name.c_str();
 
-    auto paramNameWnd = CreateWindowEx(0,
+    HWND hwndTrack = NULL;
+    HWND paramNameWnd = NULL;
+    HWND paramValueWnd = NULL;
+
+    if(isCheckbox)
+    {
+        hwndTrack = CreateWindowEx(0,
+                                   L"BUTTON",
+                                   convertCharArrayToLPCWSTR(label),
+                                   WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+                                   (LONG)(m_dpiScale * STATIC_WIDTH),
+                                   (LONG)(m_dpiScale * (m_trackbars.size() * PARAM_HEIGHT + PARAMS_TOP + 8)),
+                                   (LONG)(m_dpiScale * TRACK_WIDTH),
+                                   (LONG)(m_dpiScale * STATIC_HEIGHT),
+                                   m_mainWindow,
+                                   (HMENU)m_trackbars.size(),
+                                   m_instance,
+                                   NULL);
+
+        SendMessage(hwndTrack, BM_SETCHECK, iStart > 0 ? BST_CHECKED : BST_UNCHECKED, 0);
+        SendMessage(hwndTrack, WM_SETFONT, (LPARAM)m_font, true);
+    }
+    else
+    {
+        hwndTrack = CreateWindowEx(0,
+                                   TRACKBAR_CLASS,
+                                   L"Trackbar Control",
+                                   WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS,
+                                   (LONG)(m_dpiScale * STATIC_WIDTH),
+                                   (LONG)(m_dpiScale * (m_trackbars.size() * PARAM_HEIGHT + PARAMS_TOP)),
+                                   (LONG)(m_dpiScale * TRACK_WIDTH),
+                                   (LONG)(m_dpiScale * TRACK_HEIGHT),
+                                   m_mainWindow,
+                                   (HMENU)m_trackbars.size(),
+                                   m_instance,
+                                   NULL);
+
+        SendMessage(hwndTrack,
+                    TBM_SETRANGE,
+                    (WPARAM)TRUE, // redraw flag
+                    (LPARAM)MAKELONG(iMin, iMax));
+
+        SendMessage(hwndTrack,
+                    TBM_SETPOS,
+                    (WPARAM)TRUE, // redraw flag
+                    (LPARAM)iStart);
+
+        SendMessage(hwndTrack, WM_SETFONT, (LPARAM)m_font, true);
+
+        paramNameWnd = CreateWindowEx(0,
+                                      L"STATIC",
+                                      convertCharArrayToLPCWSTR(label),
+                                      SS_RIGHT | SS_NOTIFY | WS_CHILD | WS_VISIBLE,
+                                      2,
+                                      0,
+                                      (LONG)(m_dpiScale * STATIC_WIDTH - 2),
+                                      (LONG)(m_dpiScale * STATIC_HEIGHT),
+                                      m_mainWindow,
+                                      NULL,
+                                      m_instance,
+                                      NULL);
+        SendMessage(hwndTrack, TBM_SETBUDDY, (WPARAM)TRUE, (LPARAM)paramNameWnd);
+        SendMessage(paramNameWnd, WM_SETFONT, (LPARAM)m_font, true);
+
+        float value = p->minValue;
+        if(iSteps > 0)
+        {
+            value = p->minValue + (p->maxValue - p->minValue) * iStart / iSteps;
+        }
+
+        paramValueWnd = CreateWindowEx(0,
                                        L"STATIC",
-                                       convertCharArrayToLPCWSTR(label),
-                                       SS_RIGHT | SS_NOTIFY | WS_CHILD | WS_VISIBLE,
-                                       2,
+                                       convertCharArrayToLPCWSTR(std::to_string(value).c_str()),
+                                       SS_LEFT | WS_CHILD | WS_VISIBLE,
                                        0,
-                                       (LONG)(m_dpiScale * STATIC_WIDTH - 2),
+                                       0,
+                                       (LONG)(m_dpiScale * STATIC_WIDTH),
                                        (LONG)(m_dpiScale * STATIC_HEIGHT),
                                        m_mainWindow,
                                        NULL,
                                        m_instance,
                                        NULL);
-    SendMessage(hwndTrack, TBM_SETBUDDY, (WPARAM)TRUE, (LPARAM)paramNameWnd);
-    SendMessage(paramNameWnd, WM_SETFONT, (LPARAM)m_font, true);
+        SendMessage(hwndTrack, TBM_SETBUDDY, (WPARAM)FALSE, (LPARAM)paramValueWnd);
+        SendMessage(paramValueWnd, WM_SETFONT, (LPARAM)m_font, true);
+    }
 
     // tooltip
     if(strlen(tooltip) != 0)
@@ -466,27 +582,10 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
         toolInfo.cbSize   = sizeof(toolInfo);
         toolInfo.hwnd     = m_mainWindow;
         toolInfo.uFlags   = TTF_IDISHWND | TTF_SUBCLASS;
-        toolInfo.uId      = (UINT_PTR)paramNameWnd;
+        toolInfo.uId      = (UINT_PTR)(isCheckbox ? hwndTrack : paramNameWnd);
         toolInfo.lpszText = convertCharArrayToLPCWSTR(tooltip);
         SendMessage(m_hwndTip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo);
     }
-
-    float value = p->minValue + (p->maxValue - p->minValue) * iStart / iSteps;
-
-    auto paramValueWnd = CreateWindowEx(0,
-                                        L"STATIC",
-                                        convertCharArrayToLPCWSTR(std::to_string(value).c_str()),
-                                        SS_LEFT | WS_CHILD | WS_VISIBLE,
-                                        0,
-                                        0,
-                                        (LONG)(m_dpiScale * STATIC_WIDTH),
-                                        (LONG)(m_dpiScale * STATIC_HEIGHT),
-                                        m_mainWindow,
-                                        NULL,
-                                        m_instance,
-                                        NULL);
-    SendMessage(hwndTrack, TBM_SETBUDDY, (WPARAM)FALSE, (LPARAM)paramValueWnd);
-    SendMessage(paramValueWnd, WM_SETFONT, (LPARAM)m_font, true);
 
     ParamsTrackbar pt;
     pt.paramName     = name;
@@ -495,6 +594,7 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
     pt.paramValueWnd = paramValueWnd;
     pt.def           = iStart;
     pt.steps         = iSteps;
+    pt.isCheckbox    = isCheckbox;
     pt.params.push_back(p);
 
     m_trackbars.emplace_back(pt);
