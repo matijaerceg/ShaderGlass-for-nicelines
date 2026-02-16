@@ -47,6 +47,7 @@ private:
     HINSTANCE       m_instance {nullptr};
     HWND            m_resetButtonWnd;
     HWND            m_closeButtonWnd;
+    HWND            m_viewModeToggleWnd;
     HWND            m_hwndTip;
     HWND            m_shaderWindow;
     HFONT           m_font;
@@ -54,6 +55,7 @@ private:
     CaptureManager& m_captureManager;
     CaptureOptions& m_captureOptions;
     float           m_dpiScale;
+    bool            m_useNiceView {true};
 
     std::vector<ParamsTrackbar> m_trackbars;
 
