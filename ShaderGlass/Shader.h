@@ -62,6 +62,7 @@ public:
     void                      FillParams(int buffer, void* data);
     void                      SetParam(ShaderParam* p, void* v);
     void                      SetParam(std::string name, void* p);
+    bool                      SetParamIfSize(const std::string& name, void* value, int size);
     size_t                    BufferSize(int buffer);
 
 private:

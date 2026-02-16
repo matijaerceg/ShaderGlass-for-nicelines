@@ -260,16 +260,72 @@ void ShaderGlass::SetVertical(bool vertical)
     }
 }
 
+void ShaderGlass::SetContinuousAutoDetect(bool enabled)
+{
+    m_continuousAutoDetect.store(enabled);
+}
+
+void ShaderGlass::StartAutoDetectNow(int durationMs)
+{
+    auto nowTicks = GetTickCount64();
+    if(durationMs <= 0)
+    {
+        durationMs = 3000;
+    }
+    m_detectNowUntilTicks.store(nowTicks + static_cast<ULONGLONG>(durationMs));
+}
+
 int ShaderGlass::DetectedVerticalResolution()
 {
     return m_detectedVerticalRes.load();
 }
 
+void ShaderGlass::UpdateStableVerticalResolutionEstimate(int rawEstimate, ULONGLONG nowTicks)
+{
+    const int normalizedEstimate = rawEstimate > 0 ? rawEstimate : 0;
+
+    if(m_pendingDetectedSinceTicks == 0)
+    {
+        m_pendingDetectedVerticalRes = normalizedEstimate;
+        m_pendingDetectedSinceTicks  = nowTicks;
+        return;
+    }
+
+    if(normalizedEstimate != m_pendingDetectedVerticalRes)
+    {
+        m_pendingDetectedVerticalRes = normalizedEstimate;
+        m_pendingDetectedSinceTicks  = nowTicks;
+        return;
+    }
+
+    const ULONGLONG holdTicks = normalizedEstimate > 0 ? 1200 : 2200;
+    if(nowTicks - m_pendingDetectedSinceTicks >= holdTicks)
+    {
+        m_detectedVerticalRes.store(normalizedEstimate);
+    }
+}
+
 void ShaderGlass::UpdateVerticalResolutionEstimate(winrt::com_ptr<ID3D11Texture2D> texture, ULONGLONG nowTicks)
 {
+    auto detectNowUntil = m_detectNowUntilTicks.load();
+    if(detectNowUntil != 0 && nowTicks >= detectNowUntil)
+    {
+        if(m_detectNowUntilTicks.compare_exchange_strong(detectNowUntil, 0))
+            detectNowUntil = 0;
+        // else: a new timer was set concurrently; detectNowUntil now holds the new deadline
+    }
+
+    const bool detectNowActive = detectNowUntil != 0;
+    const bool detectionActive = m_continuousAutoDetect.load() || detectNowActive;
+    if(!detectionActive)
+    {
+        m_pendingDetectedSinceTicks = 0; // reset stabilisation state so next activation requires a full hold period
+        return;
+    }
+
     if(!texture)
     {
-        m_detectedVerticalRes.store(0);
+        UpdateStableVerticalResolutionEstimate(0, nowTicks);
         return;
     }
 
@@ -284,14 +340,14 @@ void ShaderGlass::UpdateVerticalResolutionEstimate(winrt::com_ptr<ID3D11Texture2
 
     if(desc.Width < 64 || desc.Height < 64)
     {
-        m_detectedVerticalRes.store(0);
+        UpdateStableVerticalResolutionEstimate(0, nowTicks);
         return;
     }
 
     if(desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM && desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM_SRGB && desc.Format != DXGI_FORMAT_R8G8B8A8_UNORM &&
        desc.Format != DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
     {
-        m_detectedVerticalRes.store(0);
+        UpdateStableVerticalResolutionEstimate(0, nowTicks);
         return;
     }
 
@@ -315,7 +371,7 @@ void ShaderGlass::UpdateVerticalResolutionEstimate(winrt::com_ptr<ID3D11Texture2
         hr                 = m_device->CreateTexture2D(&stagingDesc, nullptr, m_detectionTexture.put());
         if(FAILED(hr) || !m_detectionTexture)
         {
-            m_detectedVerticalRes.store(0);
+            UpdateStableVerticalResolutionEstimate(0, nowTicks);
             return;
         }
     }
@@ -326,7 +382,7 @@ void ShaderGlass::UpdateVerticalResolutionEstimate(winrt::com_ptr<ID3D11Texture2
     hr                               = m_context->Map(m_detectionTexture.get(), 0, D3D11_MAP_READ, 0, &mapped);
     if(FAILED(hr))
     {
-        m_detectedVerticalRes.store(0);
+        UpdateStableVerticalResolutionEstimate(0, nowTicks);
         return;
     }
 
@@ -340,7 +396,7 @@ void ShaderGlass::UpdateVerticalResolutionEstimate(winrt::com_ptr<ID3D11Texture2
     if(regionW < 16 || regionH < 16)
     {
         m_context->Unmap(m_detectionTexture.get(), 0);
-        m_detectedVerticalRes.store(0);
+        UpdateStableVerticalResolutionEstimate(0, nowTicks);
         return;
     }
 
@@ -394,7 +450,7 @@ void ShaderGlass::UpdateVerticalResolutionEstimate(winrt::com_ptr<ID3D11Texture2
     }
     if(edgeEnergy <= 0.0001f)
     {
-        m_detectedVerticalRes.store(0);
+        UpdateStableVerticalResolutionEstimate(0, nowTicks);
         return;
     }
 
@@ -440,11 +496,11 @@ void ShaderGlass::UpdateVerticalResolutionEstimate(winrt::com_ptr<ID3D11Texture2
 
     if(bestScore < 0.58f)
     {
-        m_detectedVerticalRes.store(0);
+        UpdateStableVerticalResolutionEstimate(0, nowTicks);
         return;
     }
 
-    m_detectedVerticalRes.store(bestRes);
+    UpdateStableVerticalResolutionEstimate(bestRes, nowTicks);
 }
 
 void ShaderGlass::DestroyTargets()
@@ -1193,7 +1249,7 @@ void ShaderGlass::Process(winrt::com_ptr<ID3D11Texture2D> texture, ULONGLONG fra
     winrt::com_ptr<ID3D11ShaderResourceView> textureView;
     hr = m_device->CreateShaderResourceView(texture.get(), nullptr, textureView.put());
     assert(SUCCEEDED(hr));
-    m_preprocessPass.Render(textureView.get(), m_passResources, logicalFrameNo, 0, 0);
+    m_preprocessPass.Render(textureView.get(), m_passResources, logicalFrameNo, m_detectedVerticalRes.load(), 0, 0);
 
     if(m_cursorEmulator.Hidden())
     {
@@ -1253,11 +1309,11 @@ void ShaderGlass::Process(winrt::com_ptr<ID3D11Texture2D> texture, ULONGLONG fra
 
         if(p == 0)
         {
-            shaderPass.Render(m_originalView.get(), m_passResources, logicalFrameNo, passBoxX, passBoxY);
+            shaderPass.Render(m_originalView.get(), m_passResources, logicalFrameNo, m_detectedVerticalRes.load(), passBoxX, passBoxY);
         }
         else
         {
-            shaderPass.Render(m_passResources, logicalFrameNo, passBoxX, passBoxY);
+            shaderPass.Render(m_passResources, logicalFrameNo, m_detectedVerticalRes.load(), passBoxX, passBoxY);
         }
         p++;
     }

@@ -202,6 +202,8 @@
 #define IDM_SHADER_RELOAD               32941
 #define ID_GLOBALHOTKEYS_RELOAD         32942
 #define ID_GLOBALHOTKEYS_SETLABEL       32943
+#define ID_PIXELROW_AUTODETECT_NOW      32944
+#define ID_PIXELROW_AUTODETECT_CONTINUOUS 32945
 #define IDC_STATIC                      -1
 #define IDC_STATIC_LABEL                -1
 
@@ -211,7 +213,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        142
-#define _APS_NEXT_COMMAND_VALUE         32944
+#define _APS_NEXT_COMMAND_VALUE         32946
 #define _APS_NEXT_CONTROL_VALUE         1004
 #define _APS_NEXT_SYMED_VALUE           116
 #endif

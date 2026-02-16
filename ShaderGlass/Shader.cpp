@@ -228,6 +228,20 @@ void Shader::SetParam(std::string name, void* v)
     }
 }
 
+bool Shader::SetParamIfSize(const std::string& name, void* value, int size)
+{
+    bool matched = false;
+    for(auto& p : m_shaderDef.Params)
+    {
+        if(p.name == name && p.size == size)
+        {
+            SetParam(&p, value);
+            matched = true;
+        }
+    }
+    return matched;
+}
+
 size_t Shader::BufferSize(int buffer)
 {
     return m_shaderDef.ParamsSize(buffer);

@@ -254,12 +254,17 @@ void ShaderPass::Resize(
     }
 }
 
-void ShaderPass::Render(std::map<std::string, winrt::com_ptr<ID3D11ShaderResourceView>>& resources, int frameNo, int boxX, int boxY)
+void ShaderPass::Render(std::map<std::string, winrt::com_ptr<ID3D11ShaderResourceView>>& resources, int frameNo, int detectedVerticalRows, int boxX, int boxY)
 {
-    Render(m_sourceView, resources, frameNo, boxX, boxY);
+    Render(m_sourceView, resources, frameNo, detectedVerticalRows, boxX, boxY);
 }
 
-void ShaderPass::Render(ID3D11ShaderResourceView* sourceView, std::map<std::string, winrt::com_ptr<ID3D11ShaderResourceView>>& resources, int frameNo, int boxX, int boxY)
+void ShaderPass::Render(ID3D11ShaderResourceView* sourceView,
+                        std::map<std::string, winrt::com_ptr<ID3D11ShaderResourceView>>& resources,
+                        int frameNo,
+                        int detectedVerticalRows,
+                        int boxX,
+                        int boxY)
 {
     params_FrameCount = frameNo;
     if(m_shader.m_frameCountMod > 0)
@@ -267,6 +272,13 @@ void ShaderPass::Render(ID3D11ShaderResourceView* sourceView, std::map<std::stri
         while(params_FrameCount >= m_shader.m_frameCountMod)
             params_FrameCount -= m_shader.m_frameCountMod;
     }
+
+    const float detectedRows = static_cast<float>((std::max)(0, detectedVerticalRows));
+    float       detectedRows4[4] {detectedRows, detectedRows > 0.0f ? (1.0f / detectedRows) : 0.0f, 0.0f, 0.0f};
+    m_shader.SetParamIfSize("SGDetectedVerticalRows", &detectedRows, sizeof(detectedRows));
+    m_shader.SetParamIfSize("SGDetectedVerticalRows", &detectedRows4, sizeof(detectedRows4));
+    m_shader.SetParamIfSize("DetectedVerticalRows", &detectedRows, sizeof(detectedRows));
+    m_shader.SetParamIfSize("DetectedVerticalRows", &detectedRows4, sizeof(detectedRows4));
 
     m_shader.SetParam("FrameCount", &params_FrameCount);
     m_shader.SetParam("MVP", &m_modelViewProj);

@@ -192,6 +192,13 @@ bool ShaderWindow::LoadProfile(const std::wstring& fileName, bool forceStart)
                 CheckMenuItem(m_orientationMenu, ID_ORIENTATION_HORIZONTAL, (m_captureOptions.vertical ? MF_UNCHECKED : MF_CHECKED) | MF_BYCOMMAND);
                 CheckMenuItem(m_orientationMenu, ID_ORIENTATION_VERTICAL, (m_captureOptions.vertical ? MF_CHECKED : MF_UNCHECKED) | MF_BYCOMMAND);
             }
+            else if(key == "ContinuousPixelRowAutoDetect")
+            {
+                m_captureOptions.continuousPixelRowAutoDetect = (value == "1");
+                CheckMenuItem(m_pixelRowDetectMenu,
+                              ID_PIXELROW_AUTODETECT_CONTINUOUS,
+                              m_captureOptions.continuousPixelRowAutoDetect ? (MF_CHECKED | MF_BYCOMMAND) : (MF_UNCHECKED | MF_BYCOMMAND));
+            }
             else if(key == "Clone")
             {
                 clone = (value == "1");
@@ -343,6 +350,8 @@ bool ShaderWindow::LoadProfile(const std::wstring& fileName, bool forceStart)
         {
             m_captureManager.SetParams(params);
         }
+
+        m_captureManager.UpdateVerticalAutoDetect();
 
         if(paused && !isImport)
             SendMessage(m_mainWindow, WM_COMMAND, IDM_START, 0);
@@ -532,6 +541,7 @@ void ShaderWindow::SaveProfile(const std::wstring& fileName)
     outfile << "FlipH " << std::quoted(std::to_string(m_captureOptions.flipHorizontal)) << std::endl;
     outfile << "FlipV " << std::quoted(std::to_string(m_captureOptions.flipVertical)) << std::endl;
     outfile << "Vertical " << std::quoted(std::to_string(m_captureOptions.vertical)) << std::endl;
+    outfile << "ContinuousPixelRowAutoDetect " << std::quoted(std::to_string(m_captureOptions.continuousPixelRowAutoDetect)) << std::endl;
     outfile << "Clone " << std::quoted(std::to_string(m_captureOptions.clone)) << std::endl;
     outfile << "CaptureCursor " << std::quoted(std::to_string(m_captureOptions.captureCursor)) << std::endl;
     outfile << "Transparent " << std::quoted(std::to_string(m_captureOptions.transparent)) << std::endl;
@@ -908,7 +918,11 @@ void ShaderWindow::BuildInputMenu()
     {
         AppendMenu(m_pixelSizeMenu, MF_STRING, px.first, px.second.text);
     }
-    InsertMenu(m_inputMenu, 5, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR)m_pixelSizeMenu, L"Pixel Size");
+    m_pixelRowDetectMenu = CreatePopupMenu();
+    AppendMenu(m_pixelRowDetectMenu, MF_STRING, ID_PIXELROW_AUTODETECT_NOW, L"Auto-detect now");
+    AppendMenu(m_pixelRowDetectMenu, MF_STRING, ID_PIXELROW_AUTODETECT_CONTINUOUS, L"Continuous auto detection");
+    InsertMenu(m_inputMenu, 5, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR)m_pixelRowDetectMenu, L"Pixel Row Count Auto Detect");
+    InsertMenu(m_inputMenu, 6, MF_BYPOSITION | MF_STRING | MF_POPUP, (UINT_PTR)m_pixelSizeMenu, L"Pixel Size");
 
     m_displayMenu = GetSubMenu(m_inputMenu, 0);
     m_windowMenu  = GetSubMenu(m_inputMenu, 1);
@@ -1400,6 +1414,16 @@ LRESULT CALLBACK ShaderWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
             break;
         case ID_INPUT_FILE:
             LoadInputImage();
+            break;
+        case ID_PIXELROW_AUTODETECT_NOW:
+            m_captureManager.StartVerticalAutoDetectNow();
+            break;
+        case ID_PIXELROW_AUTODETECT_CONTINUOUS:
+            m_captureOptions.continuousPixelRowAutoDetect = !m_captureOptions.continuousPixelRowAutoDetect;
+            CheckMenuItem(m_pixelRowDetectMenu,
+                          ID_PIXELROW_AUTODETECT_CONTINUOUS,
+                          m_captureOptions.continuousPixelRowAutoDetect ? (MF_CHECKED | MF_BYCOMMAND) : (MF_UNCHECKED | MF_BYCOMMAND));
+            m_captureManager.UpdateVerticalAutoDetect();
             break;
         case ID_PROCESSING_SETASDEFAULT:
             SaveDefault();

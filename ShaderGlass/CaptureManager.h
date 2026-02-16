@@ -42,6 +42,7 @@ struct CaptureOptions
     bool         useHDR {false};
     RECT         croppedArea {0, 0, 0, 0};
     bool         vertical {false};
+    bool         continuousPixelRowAutoDetect {false};
 };
 
 class CaptureManager
@@ -75,6 +76,8 @@ public:
     void  UpdateLockedArea();
     void  UpdateCroppedArea();
     void  UpdateVertical();
+    void  UpdateVerticalAutoDetect();
+    void  StartVerticalAutoDetectNow();
     void  GrabOutput();
     void  UpdateParams();
     void  ResetParams();

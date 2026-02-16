@@ -40,6 +40,8 @@ public:
     void  SetCroppedArea(RECT area);
     void  SetFreeScale(bool freeScale);
     void  SetVertical(bool vertical);
+    void  SetContinuousAutoDetect(bool enabled);
+    void  StartAutoDetectNow(int durationMs);
     float FPS()
     {
         return m_fps;
@@ -57,6 +59,7 @@ private:
     bool TryResizeSwapChain(const RECT& clientRect, bool force);
     void SetSwapchainColorSpace();
     void UpdateVerticalResolutionEstimate(winrt::com_ptr<ID3D11Texture2D> texture, ULONGLONG nowTicks);
+    void UpdateStableVerticalResolutionEstimate(int rawEstimate, ULONGLONG nowTicks);
     void DestroyShaders();
     void DestroyPasses();
     void DestroyTargets();
@@ -138,7 +141,11 @@ private:
     volatile bool  m_croppedAreaUpdated {false};
     volatile bool  m_vertical {false};
     volatile bool  m_verticalUpdated {false};
-    std::atomic<int> m_detectedVerticalRes {0};
-    ULONGLONG        m_lastDetectionTicks {0};
+    std::atomic<int>       m_detectedVerticalRes {0};
+    std::atomic<bool>      m_continuousAutoDetect {false};
+    std::atomic<ULONGLONG> m_detectNowUntilTicks {0};
+    int                    m_pendingDetectedVerticalRes {0};
+    ULONGLONG              m_pendingDetectedSinceTicks {0};
+    ULONGLONG              m_lastDetectionTicks {0};
     winrt::com_ptr<ID3D11Texture2D> m_detectionTexture {nullptr};
 };

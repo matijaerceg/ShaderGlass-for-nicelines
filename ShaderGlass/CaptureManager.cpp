@@ -158,6 +158,7 @@ bool CaptureManager::StartSession()
     UpdateLockedArea();
     UpdateCroppedArea();
     UpdateVertical();
+    UpdateVerticalAutoDetect();
 
     if(m_options.imageFile.size())
     {
@@ -439,6 +440,22 @@ void CaptureManager::UpdateVertical()
     {
         m_shaderGlass->SetVertical(m_options.vertical);
         UpdateOutputSize();
+    }
+}
+
+void CaptureManager::UpdateVerticalAutoDetect()
+{
+    if(m_shaderGlass)
+    {
+        m_shaderGlass->SetContinuousAutoDetect(m_options.continuousPixelRowAutoDetect);
+    }
+}
+
+void CaptureManager::StartVerticalAutoDetectNow()
+{
+    if(m_shaderGlass)
+    {
+        m_shaderGlass->StartAutoDetectNow(3000);
     }
 }
 
