@@ -28,6 +28,8 @@ struct ParamsTrackbar
     HWND paramNameWnd;
     HWND paramValueWnd;
     bool isCheckbox;
+    std::string checkboxOffText;
+    std::string checkboxOnText;
 
     std::vector<ShaderParam*> params;
 };

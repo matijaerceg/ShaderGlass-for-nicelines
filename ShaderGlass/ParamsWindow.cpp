@@ -16,12 +16,12 @@ constexpr int BUTTON_WIDTH  = 100;
 constexpr int BUTTON_HEIGHT = 25;
 constexpr int BUTTON_TOP    = 20;
 constexpr int PARAMS_TOP    = 75;
-constexpr int PARAM_HEIGHT  = 52;
+constexpr int PARAM_HEIGHT  = 40;
 constexpr int WINDOW_WIDTH  = 670;
 constexpr int WINDOW_HEIGHT = 600;
 constexpr int TRACK_WIDTH   = 200;
 constexpr int TRACK_HEIGHT  = 30;
-constexpr int CHECKBOX_WIDTH = 72;
+constexpr int CHECKBOX_WIDTH = 132;
 constexpr int CHECKBOX_HEIGHT = 34;
 constexpr int VIEW_TOGGLE_WIDTH = 155;
 constexpr int VIEW_TOGGLE_HEIGHT = 25;
@@ -52,6 +52,63 @@ bool IsBinaryParam(const ShaderParam& param)
 
     int roundedSteps = (int)roundf(effectiveSteps);
     return roundedSteps == 1 && fabsf(effectiveSteps - roundedSteps) < 0.0001f;
+}
+
+std::string TrimCopy(const std::string& value)
+{
+    size_t start = value.find_first_not_of(" \t");
+    if(start == std::string::npos)
+    {
+        return "";
+    }
+
+    size_t end = value.find_last_not_of(" \t");
+    return value.substr(start, end - start + 1);
+}
+
+struct BinaryLabelText
+{
+    std::string leftLabel;
+    std::string offText;
+    std::string onText;
+};
+
+BinaryLabelText ParseBinaryLabelText(const char* rawLabel)
+{
+    std::string label = rawLabel ? rawLabel : "";
+
+    BinaryLabelText output;
+    output.leftLabel = label;
+    output.offText   = "OFF";
+    output.onText    = "ON";
+
+    size_t openParen = label.rfind('(');
+    size_t closeParen = label.rfind(')');
+    if(openParen == std::string::npos || closeParen == std::string::npos || openParen >= closeParen)
+    {
+        return output;
+    }
+
+    std::string inside = TrimCopy(label.substr(openParen + 1, closeParen - openParen - 1));
+    size_t      slash  = inside.find('/');
+    if(slash == std::string::npos)
+    {
+        return output;
+    }
+
+    std::string trueText  = TrimCopy(inside.substr(0, slash));
+    std::string falseText = TrimCopy(inside.substr(slash + 1));
+    std::string leftLabel = TrimCopy(label.substr(0, openParen));
+
+    if(leftLabel.empty() || trueText.empty() || falseText.empty())
+    {
+        return output;
+    }
+
+    output.leftLabel = leftLabel;
+    output.offText   = falseText;
+    output.onText    = trueText;
+    return output;
 }
 } // namespace
 
@@ -479,6 +536,12 @@ LRESULT CALLBACK ParamsWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
                     auto       p       = *m_trackbars[id].params.begin();
                     float      value   = checked ? p->maxValue : p->minValue;
 
+                    const std::string& caption = checked ? m_trackbars[id].checkboxOnText : m_trackbars[id].checkboxOffText;
+                    if(!caption.empty())
+                    {
+                        SetWindowText(controlHwnd, convertCharArrayToLPCWSTR(caption.c_str()));
+                    }
+
                     for(auto& tp : m_trackbars[id].params)
                     {
                         tp->currentValue = value;
@@ -525,14 +588,20 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
     HWND hwndTrack = NULL;
     HWND paramNameWnd = NULL;
     HWND paramValueWnd = NULL;
+    std::string checkboxOffText;
+    std::string checkboxOnText;
 
     if(isCheckbox)
     {
+        auto labelText = ParseBinaryLabelText(label);
+        checkboxOffText = labelText.offText;
+        checkboxOnText  = labelText.onText;
+
         int rowTop = (int)(m_dpiScale * (m_trackbars.size() * PARAM_HEIGHT + PARAMS_TOP));
 
         paramNameWnd = CreateWindowEx(0,
                                       L"STATIC",
-                                      convertCharArrayToLPCWSTR(label),
+                                      convertCharArrayToLPCWSTR(labelText.leftLabel.c_str()),
                                       SS_RIGHT | SS_NOTIFY | WS_CHILD | WS_VISIBLE,
                                       2,
                                       rowTop,
@@ -546,10 +615,10 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
 
         hwndTrack = CreateWindowEx(0,
                                    L"BUTTON",
-                                   L"",
+                                   convertCharArrayToLPCWSTR(iStart > 0 ? labelText.onText.c_str() : labelText.offText.c_str()),
                                    WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_CENTER | BS_VCENTER,
                                    (LONG)(m_dpiScale * (STATIC_WIDTH + (TRACK_WIDTH - CHECKBOX_WIDTH) / 2)),
-                                   (LONG)(rowTop + m_dpiScale * ((PARAM_HEIGHT - CHECKBOX_HEIGHT) / 2)),
+                                   (LONG)(rowTop + m_dpiScale * ((STATIC_HEIGHT - CHECKBOX_HEIGHT) / 2)),
                                    (LONG)(m_dpiScale * CHECKBOX_WIDTH),
                                    (LONG)(m_dpiScale * CHECKBOX_HEIGHT),
                                    m_mainWindow,
@@ -651,6 +720,8 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
     pt.def           = iStart;
     pt.steps         = iSteps;
     pt.isCheckbox    = isCheckbox;
+    pt.checkboxOffText = checkboxOffText;
+    pt.checkboxOnText  = checkboxOnText;
     pt.params.push_back(p);
 
     m_trackbars.emplace_back(pt);
