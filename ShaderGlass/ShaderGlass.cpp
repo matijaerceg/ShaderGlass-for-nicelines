@@ -344,7 +344,7 @@ void ShaderGlass::UpdateVerticalResolutionEstimate(winrt::com_ptr<ID3D11Texture2
         return;
     }
 
-    const int xStep = std::max(1, regionW / 320);
+    const int xStep = (std::max)(1, regionW / 320);
     std::vector<float> edgeRows(regionH, 0.0f);
 
     auto sampleLuma = [&](int x, int y) {
@@ -420,7 +420,7 @@ void ShaderGlass::UpdateVerticalResolutionEstimate(winrt::com_ptr<ID3D11Texture2
             {
                 const float pos  = (y / pitch) + phase;
                 const float dist = std::fabs(pos - std::round(pos));
-                const float w    = std::max(0.0f, 1.0f - (dist / 0.5f));
+                const float w    = (std::max)(0.0f, 1.0f - (dist / 0.5f));
                 score += edgeRows[y] * w;
             }
 
