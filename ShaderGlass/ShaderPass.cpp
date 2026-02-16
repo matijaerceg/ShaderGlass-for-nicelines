@@ -273,7 +273,7 @@ void ShaderPass::Render(ID3D11ShaderResourceView* sourceView,
             params_FrameCount -= m_shader.m_frameCountMod;
     }
 
-    const float detectedRows = static_cast<float>((std::max)(0, detectedVerticalRows));
+    float detectedRows = static_cast<float>((std::max)(0, detectedVerticalRows));
     float       detectedRows4[4] {detectedRows, detectedRows > 0.0f ? (1.0f / detectedRows) : 0.0f, 0.0f, 0.0f};
     m_shader.SetParamIfSize("SGDetectedVerticalRows", &detectedRows, sizeof(detectedRows));
     m_shader.SetParamIfSize("SGDetectedVerticalRows", &detectedRows4, sizeof(detectedRows4));
