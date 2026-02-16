@@ -21,6 +21,12 @@ constexpr int WINDOW_WIDTH  = 670;
 constexpr int WINDOW_HEIGHT = 600;
 constexpr int TRACK_WIDTH   = 200;
 constexpr int TRACK_HEIGHT  = 30;
+constexpr int CHECKBOX_SIZE = 24;
+constexpr int VIEW_TOGGLE_WIDTH = 210;
+constexpr int VIEW_TOGGLE_HEIGHT = 25;
+constexpr int VIEW_TOGGLE_LEFT = 10;
+constexpr int VIEW_TOGGLE_TOP = 20;
+constexpr int ID_VIEWMODE_TOGGLE = 50001;
 
 namespace
 {
@@ -49,7 +55,7 @@ bool IsBinaryParam(const ShaderParam& param)
 } // namespace
 
 ParamsWindow::ParamsWindow(CaptureManager& captureManager) :
-    m_captureManager(captureManager), m_captureOptions(captureManager.m_options), m_title(), m_windowClass(), m_resetButtonWnd(0), m_closeButtonWnd(0), m_font(0), m_dpiScale(1.0f),
+    m_captureManager(captureManager), m_captureOptions(captureManager.m_options), m_title(), m_windowClass(), m_resetButtonWnd(0), m_closeButtonWnd(0), m_viewModeToggleWnd(0), m_font(0), m_dpiScale(1.0f),
     m_hwndTip(NULL)
 { }
 
@@ -133,6 +139,20 @@ BOOL ParamsWindow::InitInstance(HINSTANCE hInstance, int nCmdShow)
 
     m_mainWindow = hWnd;
 
+    m_viewModeToggleWnd = CreateWindow(L"BUTTON",
+                                       L"Nice view (checkboxes)",
+                                       WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX,
+                                       (LONG)(m_dpiScale * VIEW_TOGGLE_LEFT),
+                                       (LONG)(m_dpiScale * VIEW_TOGGLE_TOP),
+                                       (LONG)(m_dpiScale * VIEW_TOGGLE_WIDTH * m_dpiScale),
+                                       (LONG)(m_dpiScale * VIEW_TOGGLE_HEIGHT * m_dpiScale),
+                                       m_mainWindow,
+                                       (HMENU)ID_VIEWMODE_TOGGLE,
+                                       (HINSTANCE)GetWindowLongPtr(m_mainWindow, GWLP_HINSTANCE),
+                                       NULL);
+    SendMessage(m_viewModeToggleWnd, WM_SETFONT, (LPARAM)m_font, true);
+    SendMessage(m_viewModeToggleWnd, BM_SETCHECK, m_useNiceView ? BST_CHECKED : BST_UNCHECKED, 0);
+
     m_resetButtonWnd = CreateWindow(L"BUTTON",
                                     L"Defaults",
                                     WS_TABSTOP | WS_VISIBLE | WS_CHILD,
@@ -184,6 +204,8 @@ void ParamsWindow::Resize()
         
         SendMessage(m_resetButtonWnd, WM_SETFONT, (WPARAM)m_font, MAKELPARAM(TRUE, 0));
         SendMessage(m_closeButtonWnd, WM_SETFONT, (WPARAM)m_font, MAKELPARAM(TRUE, 0));
+        SendMessage(m_viewModeToggleWnd, WM_SETFONT, (WPARAM)m_font, MAKELPARAM(TRUE, 0));
+        SetWindowPos(m_viewModeToggleWnd, 0, (LONG)(m_dpiScale * VIEW_TOGGLE_LEFT), (LONG)(m_dpiScale * VIEW_TOGGLE_TOP), VIEW_TOGGLE_WIDTH * m_dpiScale, VIEW_TOGGLE_HEIGHT * m_dpiScale, SWP_NOZORDER);
         SetWindowPos(m_resetButtonWnd, 0, 0, 0, BUTTON_WIDTH * m_dpiScale, BUTTON_HEIGHT * m_dpiScale, SWP_NOMOVE | SWP_NOZORDER);
         SetWindowPos(m_closeButtonWnd, 0, 0, 0, BUTTON_WIDTH * m_dpiScale, BUTTON_HEIGHT * m_dpiScale, SWP_NOMOVE | SWP_NOZORDER);
 
@@ -287,7 +309,7 @@ void ParamsWindow::RebuildControls(bool doResize)
             int startValue = (int)roundf(numSteps * (p->currentValue - p->minValue) / (p->maxValue - p->minValue));
             startValue     = (std::max)(0, (std::min)(startValue, numSteps));
 
-            if(isBinary)
+            if(isBinary && m_useNiceView)
             {
                 AddTrackbar(0, 1, startValue > 0 ? 1 : 0, 1, p->name.c_str(), p, true);
             }
@@ -427,8 +449,9 @@ LRESULT CALLBACK ParamsWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
         return 0;
     }
     case WM_COMMAND: {
-        UINT wmId = LOWORD(wParam);
-        switch(wmId)
+        UINT controlId   = LOWORD(wParam);
+        UINT notifyCode  = HIWORD(wParam);
+        switch(notifyCode)
         {
         case BN_CLICKED: {
             if(lParam == (LPARAM)m_closeButtonWnd)
@@ -438,6 +461,11 @@ LRESULT CALLBACK ParamsWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
             else if(lParam == (LPARAM)m_resetButtonWnd)
             {
                 m_captureManager.ResetParams();
+                RebuildControls(true);
+            }
+            else if(lParam == (LPARAM)m_viewModeToggleWnd)
+            {
+                m_useNiceView = SendMessage(m_viewModeToggleWnd, BM_GETCHECK, 0, 0) == BST_CHECKED;
                 RebuildControls(true);
             }
             else if(lParam)
@@ -460,14 +488,19 @@ LRESULT CALLBACK ParamsWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
             }
             return 0;
         }
+        }
+
+        switch(controlId)
+        {
         case IDM_UPDATE_PARAMS: {
             if(IsWindowVisible(m_mainWindow))
             {
                 RebuildControls(true);
             }
-        }
             return 0;
         }
+        }
+        break;
     }
     }
     return DefWindowProc(hWnd, message, wParam, lParam);
@@ -494,14 +527,30 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
 
     if(isCheckbox)
     {
+        int rowTop = (int)(m_dpiScale * (m_trackbars.size() * PARAM_HEIGHT + PARAMS_TOP));
+
+        paramNameWnd = CreateWindowEx(0,
+                                      L"STATIC",
+                                      convertCharArrayToLPCWSTR(label),
+                                      SS_RIGHT | SS_NOTIFY | WS_CHILD | WS_VISIBLE,
+                                      2,
+                                      rowTop,
+                                      (LONG)(m_dpiScale * STATIC_WIDTH - 2),
+                                      (LONG)(m_dpiScale * STATIC_HEIGHT),
+                                      m_mainWindow,
+                                      NULL,
+                                      m_instance,
+                                      NULL);
+        SendMessage(paramNameWnd, WM_SETFONT, (LPARAM)m_font, true);
+
         hwndTrack = CreateWindowEx(0,
                                    L"BUTTON",
-                                   convertCharArrayToLPCWSTR(label),
-                                   WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
-                                   (LONG)(m_dpiScale * STATIC_WIDTH),
-                                   (LONG)(m_dpiScale * (m_trackbars.size() * PARAM_HEIGHT + PARAMS_TOP + 8)),
-                                   (LONG)(m_dpiScale * TRACK_WIDTH),
-                                   (LONG)(m_dpiScale * STATIC_HEIGHT),
+                                   L"",
+                                   WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_CENTER | BS_VCENTER,
+                                   (LONG)(m_dpiScale * (STATIC_WIDTH + (TRACK_WIDTH - CHECKBOX_SIZE) / 2)),
+                                   (LONG)(rowTop + m_dpiScale * ((PARAM_HEIGHT - CHECKBOX_SIZE) / 2)),
+                                   (LONG)(m_dpiScale * CHECKBOX_SIZE),
+                                   (LONG)(m_dpiScale * CHECKBOX_SIZE),
                                    m_mainWindow,
                                    (HMENU)m_trackbars.size(),
                                    m_instance,
@@ -582,9 +631,15 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
         toolInfo.cbSize   = sizeof(toolInfo);
         toolInfo.hwnd     = m_mainWindow;
         toolInfo.uFlags   = TTF_IDISHWND | TTF_SUBCLASS;
-        toolInfo.uId      = (UINT_PTR)(isCheckbox ? hwndTrack : paramNameWnd);
+        toolInfo.uId      = (UINT_PTR)(paramNameWnd ? paramNameWnd : hwndTrack);
         toolInfo.lpszText = convertCharArrayToLPCWSTR(tooltip);
         SendMessage(m_hwndTip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo);
+
+        if(isCheckbox && hwndTrack)
+        {
+            toolInfo.uId = (UINT_PTR)hwndTrack;
+            SendMessage(m_hwndTip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo);
+        }
     }
 
     ParamsTrackbar pt;
