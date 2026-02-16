@@ -534,7 +534,7 @@ LRESULT CALLBACK ParamsWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
                 {
                     const auto checked = SendMessage(controlHwnd, BM_GETCHECK, 0, 0) == BST_CHECKED;
                     auto       p       = *m_trackbars[id].params.begin();
-                    float      value   = checked ? p->maxValue : p->minValue;
+                    float      value   = checked ? p->minValue : p->maxValue;
 
                     const std::string& caption = checked ? m_trackbars[id].checkboxOnText : m_trackbars[id].checkboxOffText;
                     if(!caption.empty())
@@ -597,12 +597,16 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
         checkboxOffText = labelText.offText;
         checkboxOnText  = labelText.onText;
 
-        int rowTop = (int)(m_dpiScale * (m_trackbars.size() * PARAM_HEIGHT + PARAMS_TOP));
+        const int  rowTop      = (int)(m_dpiScale * (m_trackbars.size() * PARAM_HEIGHT + PARAMS_TOP));
+        const LONG rowHeight   = (LONG)(m_dpiScale * PARAM_HEIGHT);
+        const LONG controlLeft = (LONG)(m_dpiScale * (STATIC_WIDTH + (TRACK_WIDTH - CHECKBOX_WIDTH) / 2));
+        const LONG controlTop  = rowTop + (rowHeight - (LONG)(m_dpiScale * CHECKBOX_HEIGHT)) / 2;
+        const bool checked     = iStart == 0;
 
         paramNameWnd = CreateWindowEx(0,
                                       L"STATIC",
                                       convertCharArrayToLPCWSTR(labelText.leftLabel.c_str()),
-                                      SS_RIGHT | SS_NOTIFY | WS_CHILD | WS_VISIBLE,
+                                      SS_RIGHT | SS_CENTERIMAGE | SS_NOTIFY | WS_CHILD | WS_VISIBLE,
                                       2,
                                       rowTop,
                                       (LONG)(m_dpiScale * STATIC_WIDTH - 2),
@@ -615,10 +619,10 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
 
         hwndTrack = CreateWindowEx(0,
                                    L"BUTTON",
-                                   convertCharArrayToLPCWSTR(iStart > 0 ? labelText.onText.c_str() : labelText.offText.c_str()),
+                                   convertCharArrayToLPCWSTR(checked ? labelText.onText.c_str() : labelText.offText.c_str()),
                                    WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_CENTER | BS_VCENTER,
-                                   (LONG)(m_dpiScale * (STATIC_WIDTH + (TRACK_WIDTH - CHECKBOX_WIDTH) / 2)),
-                                   (LONG)(rowTop + m_dpiScale * ((STATIC_HEIGHT - CHECKBOX_HEIGHT) / 2)),
+                                   controlLeft,
+                                   controlTop,
                                    (LONG)(m_dpiScale * CHECKBOX_WIDTH),
                                    (LONG)(m_dpiScale * CHECKBOX_HEIGHT),
                                    m_mainWindow,
@@ -626,7 +630,7 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
                                    m_instance,
                                    NULL);
 
-        SendMessage(hwndTrack, BM_SETCHECK, iStart > 0 ? BST_CHECKED : BST_UNCHECKED, 0);
+        SendMessage(hwndTrack, BM_SETCHECK, checked ? BST_CHECKED : BST_UNCHECKED, 0);
         SendMessage(hwndTrack, WM_SETFONT, (LPARAM)m_font, true);
     }
     else
