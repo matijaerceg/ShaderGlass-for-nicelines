@@ -6,6 +6,7 @@ on:
     branches:
       - master
       - feature/**
+      - ux-improvements
     paths:
       - ShaderGlass.sln
       - .github/workflows/build.yml
