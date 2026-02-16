@@ -89,6 +89,7 @@ public:
     void  Exit();
     float InFPS();
     float OutFPS();
+    int   DetectedVerticalResolution();
     int   FindByName(const char* presetName);
     bool  FindDeviceFormat(int deviceFormatNo, std::vector<CaptureDevice>::const_iterator& device, std::vector<CaptureFormat>::const_iterator& format);
 

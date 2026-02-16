@@ -304,6 +304,15 @@ float CaptureManager::InFPS()
     return 0.f;
 }
 
+int CaptureManager::DetectedVerticalResolution()
+{
+    if(m_shaderGlass)
+    {
+        return m_shaderGlass->DetectedVerticalResolution();
+    }
+    return 0;
+}
+
 void CaptureManager::ProcessFrame()
 {
     try

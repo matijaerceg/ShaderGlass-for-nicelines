@@ -1271,6 +1271,7 @@ void ShaderWindow::UpdateTitle()
         const char* scaleString = m_captureOptions.freeScale ? "free" : outputScale.mnemonic;
         const auto  inFPS       = (int)roundf(m_captureManager.InFPS());
         const auto  outFPS      = (int)roundf(m_captureManager.OutFPS());
+        const auto  detectedY   = m_captureManager.DetectedVerticalResolution();
         char        advancedFlags[10];
         advancedFlags[0] = ' ';
         int a            = 1;
@@ -1286,11 +1287,14 @@ void ShaderWindow::UpdateTitle()
         if(a == 1)
             advancedFlags[0] = 0;
         char inFPSdisplay[20] = "";
+        char detectDisplay[20] = "";
         if(m_captureOptions.flipMode || m_captureOptions.maxCaptureRate)
             snprintf(inFPSdisplay, 20, "%d->", inFPS);
+        if(detectedY > 0)
+            snprintf(detectDisplay, 20, ", est %dp", detectedY);
         _snwprintf_s(title,
                      200,
-                     _T("ShaderGlass (%s%S, %Spx, %S%%, ~%S, %S%dfps%S)"),
+                     _T("ShaderGlass (%s%S, %Spx, %S%%, ~%S, %S%dfps%S%S)"),
                      windowName,
                      shader->Name.c_str(),
                      pixelSize.mnemonic,
@@ -1298,7 +1302,8 @@ void ShaderWindow::UpdateTitle()
                      aspectRatio.mnemonic,
                      inFPSdisplay,
                      outFPS,
-                     advancedFlags);
+                     advancedFlags,
+                     detectDisplay);
         SetWindowTextW(m_mainWindow, title);
     }
     else

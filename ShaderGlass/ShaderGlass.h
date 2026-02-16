@@ -12,6 +12,7 @@ GNU General Public License v3.0
 #include "Shaders\PreprocessShaderDef.h"
 #include "Shaders\PassthroughShaderDef.h"
 #include "Shaders\PassthroughPresetDef.h"
+#include <atomic>
 
 class CursorEmulator;
 
@@ -48,12 +49,14 @@ public:
     void                                       UpdateParams();
     void                                       ResetParams();
     float                                      GetDefaultValue(ShaderParam* p);
+    int                                        DetectedVerticalResolution();
     void                                       Stop();
     ~ShaderGlass();
 
 private:
     bool TryResizeSwapChain(const RECT& clientRect, bool force);
     void SetSwapchainColorSpace();
+    void UpdateVerticalResolutionEstimate(winrt::com_ptr<ID3D11Texture2D> texture, ULONGLONG nowTicks);
     void DestroyShaders();
     void DestroyPasses();
     void DestroyTargets();
@@ -135,4 +138,7 @@ private:
     volatile bool  m_croppedAreaUpdated {false};
     volatile bool  m_vertical {false};
     volatile bool  m_verticalUpdated {false};
+    std::atomic<int> m_detectedVerticalRes {0};
+    ULONGLONG        m_lastDetectionTicks {0};
+    winrt::com_ptr<ID3D11Texture2D> m_detectionTexture {nullptr};
 };

@@ -10,6 +10,9 @@ GNU General Public License v3.0
 #include "ShaderList.h"
 #include "CursorEmulator.h"
 #include "resource.h"
+#include <algorithm>
+#include <cmath>
+#include <vector>
 
 static HRESULT     hr;
 static const float background_colour[4] = {0, 0, 0, 1.0f};
@@ -257,6 +260,193 @@ void ShaderGlass::SetVertical(bool vertical)
     }
 }
 
+int ShaderGlass::DetectedVerticalResolution()
+{
+    return m_detectedVerticalRes.load();
+}
+
+void ShaderGlass::UpdateVerticalResolutionEstimate(winrt::com_ptr<ID3D11Texture2D> texture, ULONGLONG nowTicks)
+{
+    if(!texture)
+    {
+        m_detectedVerticalRes.store(0);
+        return;
+    }
+
+    if(nowTicks - m_lastDetectionTicks < 250)
+    {
+        return;
+    }
+    m_lastDetectionTicks = nowTicks;
+
+    D3D11_TEXTURE2D_DESC desc = {};
+    texture->GetDesc(&desc);
+
+    if(desc.Width < 64 || desc.Height < 64)
+    {
+        m_detectedVerticalRes.store(0);
+        return;
+    }
+
+    if(desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM && desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM_SRGB && desc.Format != DXGI_FORMAT_R8G8B8A8_UNORM &&
+       desc.Format != DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
+    {
+        m_detectedVerticalRes.store(0);
+        return;
+    }
+
+    D3D11_TEXTURE2D_DESC stagingDesc = desc;
+    stagingDesc.BindFlags            = 0;
+    stagingDesc.MiscFlags            = 0;
+    stagingDesc.Usage                = D3D11_USAGE_STAGING;
+    stagingDesc.CPUAccessFlags       = D3D11_CPU_ACCESS_READ;
+
+    bool recreateDetectionTexture = !m_detectionTexture;
+    if(m_detectionTexture)
+    {
+        D3D11_TEXTURE2D_DESC existingDesc = {};
+        m_detectionTexture->GetDesc(&existingDesc);
+        recreateDetectionTexture = existingDesc.Width != stagingDesc.Width || existingDesc.Height != stagingDesc.Height || existingDesc.Format != stagingDesc.Format;
+    }
+
+    if(recreateDetectionTexture)
+    {
+        m_detectionTexture = nullptr;
+        hr                 = m_device->CreateTexture2D(&stagingDesc, nullptr, m_detectionTexture.put());
+        if(FAILED(hr) || !m_detectionTexture)
+        {
+            m_detectedVerticalRes.store(0);
+            return;
+        }
+    }
+
+    m_context->CopyResource(m_detectionTexture.get(), texture.get());
+
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    hr                               = m_context->Map(m_detectionTexture.get(), 0, D3D11_MAP_READ, 0, &mapped);
+    if(FAILED(hr))
+    {
+        m_detectedVerticalRes.store(0);
+        return;
+    }
+
+    const int xStart = static_cast<int>(desc.Width / 4);
+    const int xEnd   = static_cast<int>((desc.Width * 3) / 4);
+    const int yStart = static_cast<int>(desc.Height / 4);
+    const int yEnd   = static_cast<int>((desc.Height * 3) / 4);
+
+    const int regionW = xEnd - xStart;
+    const int regionH = yEnd - yStart;
+    if(regionW < 16 || regionH < 16)
+    {
+        m_context->Unmap(m_detectionTexture.get(), 0);
+        m_detectedVerticalRes.store(0);
+        return;
+    }
+
+    const int xStep = std::max(1, regionW / 320);
+    std::vector<float> edgeRows(regionH, 0.0f);
+
+    auto sampleLuma = [&](int x, int y) {
+        const auto* row = reinterpret_cast<const uint8_t*>(mapped.pData) + static_cast<size_t>(y) * mapped.RowPitch + static_cast<size_t>(x) * 4;
+        float r, g, b;
+        if(desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM || desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)
+        {
+            b = row[0] / 255.0f;
+            g = row[1] / 255.0f;
+            r = row[2] / 255.0f;
+        }
+        else
+        {
+            r = row[0] / 255.0f;
+            g = row[1] / 255.0f;
+            b = row[2] / 255.0f;
+        }
+        return r * 0.2126f + g * 0.7152f + b * 0.0722f;
+    };
+
+    const float edgeThreshold = 0.03f;
+    for(int y = yStart + 1; y < yEnd - 1; y++)
+    {
+        float accum = 0.0f;
+        int   count = 0;
+        for(int x = xStart; x < xEnd; x += xStep)
+        {
+            const float above = sampleLuma(x, y - 1);
+            const float below = sampleLuma(x, y + 1);
+            const float d     = std::fabs(below - above);
+            if(d > edgeThreshold)
+            {
+                accum += (d - edgeThreshold);
+            }
+            count++;
+        }
+        const int rowIndex = y - yStart;
+        edgeRows[rowIndex] = count > 0 ? accum / count : 0.0f;
+    }
+
+    m_context->Unmap(m_detectionTexture.get(), 0);
+
+    float edgeEnergy = 0.0f;
+    for(const auto value : edgeRows)
+    {
+        edgeEnergy += value;
+    }
+    if(edgeEnergy <= 0.0001f)
+    {
+        m_detectedVerticalRes.store(0);
+        return;
+    }
+
+    int   bestRes   = 0;
+    float bestScore = 0.0f;
+
+    const int minCandidate = 140;
+    const int maxCandidate = 420;
+    for(int candidate = minCandidate; candidate <= maxCandidate; candidate++)
+    {
+        const float pitch = regionH / static_cast<float>(candidate);
+        if(pitch < 1.0f || pitch > 24.0f)
+        {
+            continue;
+        }
+
+        float bestPhaseScore = 0.0f;
+        for(int phaseStep = 0; phaseStep < 12; phaseStep++)
+        {
+            const float phase = phaseStep / 12.0f;
+            float       score = 0.0f;
+            for(int y = 0; y < regionH; y++)
+            {
+                const float pos  = (y / pitch) + phase;
+                const float dist = std::fabs(pos - std::round(pos));
+                const float w    = std::max(0.0f, 1.0f - (dist / 0.5f));
+                score += edgeRows[y] * w;
+            }
+
+            if(score > bestPhaseScore)
+            {
+                bestPhaseScore = score;
+            }
+        }
+
+        const float normalizedScore = bestPhaseScore / edgeEnergy;
+        if(normalizedScore > bestScore)
+        {
+            bestScore = normalizedScore;
+            bestRes   = candidate;
+        }
+    }
+
+    if(bestScore < 0.58f)
+    {
+        m_detectedVerticalRes.store(0);
+        return;
+    }
+
+    m_detectedVerticalRes.store(bestRes);
+}
+
 void ShaderGlass::DestroyTargets()
 {
     if(m_preprocessedRenderTarget != nullptr)
@@ -459,6 +649,8 @@ void ShaderGlass::Process(winrt::com_ptr<ID3D11Texture2D> texture, ULONGLONG fra
         // still rendering, drop frame
         return;
     }
+
+    UpdateVerticalResolutionEstimate(texture, nowTicks);
 
     POINT topLeft;
     topLeft.x = 0;
