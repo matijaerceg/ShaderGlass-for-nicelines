@@ -285,7 +285,7 @@ void ParamsWindow::RebuildControls(bool doResize)
                 numSteps = 1;
             }
             int startValue = (int)roundf(numSteps * (p->currentValue - p->minValue) / (p->maxValue - p->minValue));
-            startValue     = std::max(0, std::min(startValue, numSteps));
+            startValue     = (std::max)(0, (std::min)(startValue, numSteps));
 
             if(isBinary)
             {
