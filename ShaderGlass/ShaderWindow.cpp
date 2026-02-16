@@ -478,7 +478,7 @@ void ShaderWindow::StartImage(bool autoScale, int pixelSize)
     m_captureOptions.transparent = false;
     CheckMenuItem(m_outputWindowMenu, IDM_WINDOW_TRANSPARENT, MF_UNCHECKED | MF_BYCOMMAND);
     CheckMenuItem(m_outputWindowMenu, IDM_WINDOW_SOLID, MF_CHECKED | MF_BYCOMMAND);
-    TryUpdateInput();
+    TryUpdateInput(true);
     EnableMenuItem(m_outputScaleMenu, IDM_OUTPUT_FREESCALE, MF_BYCOMMAND | MF_ENABLED);
 
     // if we are *switching* to file mode, default pixel size and freescale
@@ -1890,7 +1890,7 @@ LRESULT CALLBACK ShaderWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
                     {
                         m_captureManager.UpdateCursor();
                     }
-                    TryUpdateInput();
+                    TryUpdateInput(true);
                     UpdateWindowState();
                     SetFreeScale();
                     break;
@@ -1928,7 +1928,7 @@ LRESULT CALLBACK ShaderWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
                     {
                         m_captureManager.UpdateCursor();
                     }
-                    TryUpdateInput();
+                    TryUpdateInput(true);
                     UpdateWindowState();
                     break;
                 }
@@ -2278,12 +2278,18 @@ void ShaderWindow::Stop()
     SendMessage(m_paramsWindow, WM_COMMAND, IDM_UPDATE_PARAMS, 0);
 }
 
-void ShaderWindow::TryUpdateInput()
+void ShaderWindow::TryUpdateInput(bool startAutoDetectNow)
 {
     if(!m_captureManager.UpdateInput())
     {
         EnableMenuItem(m_programMenu, IDM_START, MF_BYCOMMAND | MF_ENABLED);
         EnableMenuItem(m_programMenu, IDM_STOP, MF_BYCOMMAND | MF_DISABLED);
+        return;
+    }
+
+    if(startAutoDetectNow && m_captureManager.IsActive())
+    {
+        m_captureManager.StartVerticalAutoDetectNow();
     }
 }
 

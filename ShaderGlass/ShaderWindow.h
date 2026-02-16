@@ -109,7 +109,7 @@ private:
     void         ToggleBorderless(HWND hWnd);
     bool         Start();
     void         Stop();
-    void         TryUpdateInput();
+    void         TryUpdateInput(bool startAutoDetectNow = false);
     void         Screenshot();
     void         LoadInputImage();
     void         StartImage(bool autoScale, int pixelSize);
