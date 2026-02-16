@@ -16,13 +16,14 @@ constexpr int BUTTON_WIDTH  = 100;
 constexpr int BUTTON_HEIGHT = 25;
 constexpr int BUTTON_TOP    = 20;
 constexpr int PARAMS_TOP    = 75;
-constexpr int PARAM_HEIGHT  = 40;
+constexpr int PARAM_HEIGHT  = 52;
 constexpr int WINDOW_WIDTH  = 670;
 constexpr int WINDOW_HEIGHT = 600;
 constexpr int TRACK_WIDTH   = 200;
 constexpr int TRACK_HEIGHT  = 30;
-constexpr int CHECKBOX_SIZE = 24;
-constexpr int VIEW_TOGGLE_WIDTH = 210;
+constexpr int CHECKBOX_WIDTH = 72;
+constexpr int CHECKBOX_HEIGHT = 34;
+constexpr int VIEW_TOGGLE_WIDTH = 155;
 constexpr int VIEW_TOGGLE_HEIGHT = 25;
 constexpr int VIEW_TOGGLE_LEFT = 10;
 constexpr int VIEW_TOGGLE_TOP = 20;
@@ -140,12 +141,12 @@ BOOL ParamsWindow::InitInstance(HINSTANCE hInstance, int nCmdShow)
     m_mainWindow = hWnd;
 
     m_viewModeToggleWnd = CreateWindow(L"BUTTON",
-                                       L"Nice view (checkboxes)",
+                                       L"Nice view",
                                        WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX,
                                        (LONG)(m_dpiScale * VIEW_TOGGLE_LEFT),
                                        (LONG)(m_dpiScale * VIEW_TOGGLE_TOP),
-                                       (LONG)(m_dpiScale * VIEW_TOGGLE_WIDTH * m_dpiScale),
-                                       (LONG)(m_dpiScale * VIEW_TOGGLE_HEIGHT * m_dpiScale),
+                                       (LONG)(m_dpiScale * VIEW_TOGGLE_WIDTH),
+                                       (LONG)(m_dpiScale * VIEW_TOGGLE_HEIGHT),
                                        m_mainWindow,
                                        (HMENU)ID_VIEWMODE_TOGGLE,
                                        (HINSTANCE)GetWindowLongPtr(m_mainWindow, GWLP_HINSTANCE),
@@ -158,8 +159,8 @@ BOOL ParamsWindow::InitInstance(HINSTANCE hInstance, int nCmdShow)
                                     WS_TABSTOP | WS_VISIBLE | WS_CHILD,
                                     (LONG)(m_dpiScale * ((WINDOW_WIDTH / 3) - (BUTTON_WIDTH / 2))),
                                     (LONG)(m_dpiScale * BUTTON_TOP),
-                                    (LONG)(m_dpiScale * BUTTON_WIDTH * m_dpiScale),
-                                    (LONG)(m_dpiScale * BUTTON_HEIGHT * m_dpiScale),
+                                    (LONG)(m_dpiScale * BUTTON_WIDTH),
+                                    (LONG)(m_dpiScale * BUTTON_HEIGHT),
                                     m_mainWindow,
                                     NULL,
                                     (HINSTANCE)GetWindowLongPtr(m_mainWindow, GWLP_HINSTANCE),
@@ -171,8 +172,8 @@ BOOL ParamsWindow::InitInstance(HINSTANCE hInstance, int nCmdShow)
                                     WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
                                     (LONG)(m_dpiScale * ((2 * WINDOW_WIDTH / 3) - (BUTTON_WIDTH / 2))),
                                     (LONG)(m_dpiScale * BUTTON_TOP),
-                                    (LONG)(m_dpiScale * BUTTON_WIDTH * m_dpiScale),
-                                    (LONG)(m_dpiScale * BUTTON_HEIGHT * m_dpiScale),
+                                    (LONG)(m_dpiScale * BUTTON_WIDTH),
+                                    (LONG)(m_dpiScale * BUTTON_HEIGHT),
                                     m_mainWindow,
                                     NULL,
                                     (HINSTANCE)GetWindowLongPtr(m_mainWindow, GWLP_HINSTANCE),
@@ -547,10 +548,10 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
                                    L"BUTTON",
                                    L"",
                                    WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_CENTER | BS_VCENTER,
-                                   (LONG)(m_dpiScale * (STATIC_WIDTH + (TRACK_WIDTH - CHECKBOX_SIZE) / 2)),
-                                   (LONG)(rowTop + m_dpiScale * ((PARAM_HEIGHT - CHECKBOX_SIZE) / 2)),
-                                   (LONG)(m_dpiScale * CHECKBOX_SIZE),
-                                   (LONG)(m_dpiScale * CHECKBOX_SIZE),
+                                   (LONG)(m_dpiScale * (STATIC_WIDTH + (TRACK_WIDTH - CHECKBOX_WIDTH) / 2)),
+                                   (LONG)(rowTop + m_dpiScale * ((PARAM_HEIGHT - CHECKBOX_HEIGHT) / 2)),
+                                   (LONG)(m_dpiScale * CHECKBOX_WIDTH),
+                                   (LONG)(m_dpiScale * CHECKBOX_HEIGHT),
                                    m_mainWindow,
                                    (HMENU)m_trackbars.size(),
                                    m_instance,
