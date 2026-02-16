@@ -6,7 +6,7 @@
 // Input B (Mask):   base masked image from pass 2 (linear, via alias)
 // Output: final image in sRGB
 
-#pragma parameter CURVATURE "CURVATURE" 0.0 0.0 1.0 1.0
+#pragma parameter CURVATURE "CURVATURE (OFF/ON)" 0.0 0.0 1.0 1.0
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
