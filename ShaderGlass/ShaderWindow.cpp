@@ -2128,6 +2128,7 @@ LRESULT CALLBACK ShaderWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
             {
                 if(m_captureManager.StartSession())
                 {
+                    m_captureManager.StartVerticalAutoDetectNow();
                     UpdateGPUName();
                     m_captureOptions.paused = false;
                 }
@@ -2250,6 +2251,7 @@ bool ShaderWindow::Start()
 
     if(m_captureManager.StartSession())
     {
+        m_captureManager.StartVerticalAutoDetectNow();
         EnableMenuItem(m_programMenu, IDM_START, MF_BYCOMMAND | MF_DISABLED);
         EnableMenuItem(m_programMenu, IDM_STOP, MF_BYCOMMAND | MF_ENABLED);
         UpdateGPUName();
