@@ -14,10 +14,8 @@
 
 // === PARAMETERS ===
 #pragma parameter SHADOW_MASK_MODE "SHADOW MASK (Off / Single / Double)" 1.0 0.0 2.0 1.0
-#pragma parameter MASK_CLIPSAFE_STRENGTH "MASK: ClipSafe Strength" 1.0 0.0 1.0 0.01
 #pragma parameter MASK_CLIPSAFE_CURVE "MASK: ClipSafe Luma Curve" 1.0 0.2 4.0 0.05
 #pragma parameter MASK_CLIPSAFE_CUTOFF "MASK: ClipSafe Luma Cutoff" 0.42 0.05 1.0 0.01
-#pragma parameter MASK_ENABLE_GAIN "MASK DEBUG: Enable Post Gain" 1.0 0.0 1.0 1.0
 #pragma parameter MASK_GAIN "MASK DEBUG: Post Gain" 1.10 0.8 1.3 0.01
 
 layout(std140, set = 0, binding = 0) uniform UBO {
@@ -27,10 +25,8 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     vec4 OutputSize;
     uint FrameCount;
     float SHADOW_MASK_MODE;
-    float MASK_CLIPSAFE_STRENGTH;
     float MASK_CLIPSAFE_CURVE;
     float MASK_CLIPSAFE_CUTOFF;
-    float MASK_ENABLE_GAIN;
     float MASK_GAIN;
 } global;
 
@@ -52,6 +48,9 @@ layout(location = 0) out vec4 FragColor;
 layout(set = 0, binding = 2) uniform sampler2D Source;  // Pass 1 output (scanlines, linear space)
 
 void main() {
+    const float MASK_CLIPSAFE_STRENGTH_LOCKED = 1.0;
+    const bool MASK_ENABLE_GAIN_LOCKED = true;
+
     vec2 px = vTexCoord * global.OutputSize.xy;
 
     // === MODE 0: No shadow mask — passthrough ===
@@ -137,12 +136,12 @@ void main() {
     float lumaT = clamp(sourceLuma / cutoff, 0.0, 1.0);
     float curve = max(global.MASK_CLIPSAFE_CURVE, 0.001);
     float unsafeAmount = pow(lumaT, curve);
-    float clipSafe = (1.0 - unsafeAmount) * clamp(global.MASK_CLIPSAFE_STRENGTH, 0.0, 1.0);
+    float clipSafe = (1.0 - unsafeAmount) * MASK_CLIPSAFE_STRENGTH_LOCKED;
     finalColor = mix(finalColor, sourceColor, clipSafe);
 
     // Explicit post-mask brightness compensation for displays where
     // intra-triad redistribution is perceptually subtle.
-    if(global.MASK_ENABLE_GAIN >= 0.5) {
+    if(MASK_ENABLE_GAIN_LOCKED) {
         finalColor *= global.MASK_GAIN;
     }
 

@@ -11,10 +11,10 @@
 // Each channel gets its own independent scanline position and mask.
 
 // === PARAMETERS ===
-#pragma parameter SCANLINE_MODE "180p / 224p / 240p / 270p / 360p / MANUAL" 2.0 0.0 5.0 1.0
-#pragma parameter MANUAL_LINES "MANUAL Scanline Count" 360.0 120.0 480.0 5.0
-#pragma parameter AUTO_LINES "SCANLINE ROUNDING (for 3D; anti-moire)" 0.0 0.0 1.0 1.0
-#pragma parameter CONV_STRENGTH "MISCONVERGENCE Strength" 0.25 0.0 0.5 0.05
+#pragma parameter SCANLINE_MODE "AUTO / 224p / 240p / MANUAL" 0.0 0.0 3.0 1.0
+#pragma parameter MANUAL_LINES "MANUAL Scanline Count (arrow keys to increment)" 360.0 120.0 480.0 1.0
+#pragma parameter AUTO_LINES "SCANLINE ROUNDING (anti-moire for 3D games)" 0.0 0.0 1.0 1.0
+#pragma parameter CONV_STRENGTH "MISCONVERGENCE Strength" 0.5 0.0 1.0 0.1
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
@@ -26,6 +26,7 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float MANUAL_LINES;
     float AUTO_LINES;
     float CONV_STRENGTH;
+    float SGDetectedVerticalRows;
 } global;
 
 // === VERTEX STAGE ===
@@ -50,15 +51,11 @@ float getTargetLines() {
     float targetLines;
     int mode = int(global.SCANLINE_MODE + 0.5);
     if(mode == 0) {
-        targetLines = 180.0;
+        targetLines = (global.SGDetectedVerticalRows > 0.5) ? global.SGDetectedVerticalRows : global.MANUAL_LINES;
     } else if(mode == 1) {
         targetLines = 224.0;
     } else if(mode == 2) {
         targetLines = 240.0;
-    } else if(mode == 3) {
-        targetLines = 270.0;
-    } else if(mode == 4) {
-        targetLines = 360.0;
     } else {
         targetLines = global.MANUAL_LINES;
     }
@@ -149,7 +146,8 @@ void main() {
     vec2 uvG = vTexCoord;
     vec2 uvB = vTexCoord;
 
-    float convStrength = global.CONV_STRENGTH * (240.0 / targetLines);
+    float convStrengthInternal = global.CONV_STRENGTH * 0.5;
+    float convStrength = convStrengthInternal * (240.0 / targetLines);
     if(convStrength > 0.0001) {
         // R and B beams offset in opposite directions, G stays centered
         uvR += calcConvergenceOffset(vTexCoord, convStrength, 1.0);

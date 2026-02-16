@@ -67,8 +67,10 @@ vec3 growHighlights(vec2 uv, float threshold, float radiusPx) {
 void main() {
     const float HALATION_THRESHOLD = 0.97;
     const float HALATION_GROW_RADIUS = 2.4;
+    vec2 passUV = clamp(vTexCoord, vec2(0.0), vec2(1.0));
+
     vec3 grown = growHighlights(
-        vTexCoord,
+        passUV,
         HALATION_THRESHOLD,
         HALATION_GROW_RADIUS
     );
