@@ -21,6 +21,7 @@ constexpr int WINDOW_WIDTH  = 670;
 constexpr int WINDOW_HEIGHT = 600;
 constexpr int TRACK_WIDTH   = 200;
 constexpr int TRACK_HEIGHT  = 30;
+constexpr int TOOLTIP_MAX_WIDTH = 420;
 constexpr int VIEW_TOGGLE_WIDTH = 155;
 constexpr int VIEW_TOGGLE_HEIGHT = 25;
 constexpr int VIEW_TOGGLE_LEFT = 10;
@@ -534,6 +535,11 @@ void ParamsWindow::RebuildControls(bool doResize)
                                NULL,
                                m_instance,
                                NULL);
+    if(m_hwndTip)
+    {
+        const int maxTooltipWidth = (std::max)(1, (int)std::lround(m_dpiScale * TOOLTIP_MAX_WIDTH));
+        SendMessage(m_hwndTip, TTM_SETMAXTIPWIDTH, 0, maxTooltipWidth);
+    }
 
     for(const auto& pt : m_captureManager.Params())
     {
