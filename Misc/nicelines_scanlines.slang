@@ -13,7 +13,8 @@
 // === PARAMETERS ===
 #pragma parameter SCANLINE_MODE "SCANLINES (Auto/224p/240p/Manual) || Auto mode requires new auto detect functionality of ShaderGlass." 0.0 0.0 3.0 1.0
 #pragma parameter MANUAL_LINES "MANUAL || Scanline Count for Manual Mode. Use arrow keys to increment by 1." 360.0 120.0 480.0 1.0
-#pragma parameter AUTO_LINES "SCANLINE COUNT ROUNDING || Helpful to eliminate moire with 3D games. Rounds the number of scanlines to be a multiple of the output resolution for integer scaling." 0.0 0.0 1.0 1.0
+#pragma parameter AUTO_LINES "3D GAME MODE || Turn on if you're not playing a pixel-perfect 2D game. Rounds the number of scanlines to a multiple of output resolution and samples the full height of a scanline rather than just its center. Works well to smooth out jaggies on high-resolution sources as well as to prevent moire." 0.0 0.0 1.0 1.0
+#pragma parameter SHADOW_MASK_MODE "SHADOW MASK (Off/Single/Double) || Emulates the look of a shadow mask while preserving overall light energy. Reduces mask detail in lows to aid with digital processing on some displays. Spills color between phosphors and into the gutter to preserve brightness in highlights." 1.0 0.0 2.0 1.0
 #pragma parameter CONV_STRENGTH "MISCONVERGENCE || Emulates the look of bad dynamic (ie. corner) convergence. 0.0 is off, 1.0 is full strength." 0.5 0.0 1.0 0.1
 
 layout(std140, set = 0, binding = 0) uniform UBO {
@@ -25,6 +26,7 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float SCANLINE_MODE;
     float MANUAL_LINES;
     float AUTO_LINES;
+    float SHADOW_MASK_MODE;
     float CONV_STRENGTH;
     float SGDetectedVerticalRows;
 } global;
@@ -85,6 +87,31 @@ float calcScanlineWidth1(float chanValue, float baseWidth, float minWidth, float
     return mix(darkWidth, brightWidth, blend);
 }
 
+float sampleChannelAt(vec2 uv, int channel) {
+    vec3 texColor = texture(Source, uv).rgb;
+    return (channel == 0) ? texColor.r : (channel == 1) ? texColor.g : texColor.b;
+}
+
+float sampleChannelOverScanlineHeight(vec2 centerUV, int channel, float targetLines) {
+    float lineHeightUV = 1.0 / max(targetLines, 1.0);
+
+    // 5-tap box over most of the scanline height (full-height approximation).
+    // This reduces diagonal stair-stepping when source detail exceeds target line grid.
+    float o0 = -0.4;
+    float o1 = -0.2;
+    float o2 =  0.0;
+    float o3 =  0.2;
+    float o4 =  0.4;
+
+    float s0 = sampleChannelAt(vec2(centerUV.x, clamp(centerUV.y + o0 * lineHeightUV, 0.0, 1.0)), channel);
+    float s1 = sampleChannelAt(vec2(centerUV.x, clamp(centerUV.y + o1 * lineHeightUV, 0.0, 1.0)), channel);
+    float s2 = sampleChannelAt(vec2(centerUV.x, clamp(centerUV.y + o2 * lineHeightUV, 0.0, 1.0)), channel);
+    float s3 = sampleChannelAt(vec2(centerUV.x, clamp(centerUV.y + o3 * lineHeightUV, 0.0, 1.0)), channel);
+    float s4 = sampleChannelAt(vec2(centerUV.x, clamp(centerUV.y + o4 * lineHeightUV, 0.0, 1.0)), channel);
+
+    return (s0 + s1 + s2 + s3 + s4) * 0.2;
+}
+
 // Process one channel through the scanline pipeline at a given UV
 // Returns the energy-preserved, scanline-masked value for one channel
 float processScanlineChannel(vec2 uv, int channel, float targetLines,
@@ -101,9 +128,14 @@ float processScanlineChannel(vec2 uv, int channel, float targetLines,
 
     float withinScanline = fract(scanlinePos);
 
-    // Sample the blurred image (already in linear space from pass 0)
-    vec3 texColor = texture(Source, sampleUV).rgb;
-    float chanValue = (channel == 0) ? texColor.r : (channel == 1) ? texColor.g : texColor.b;
+    // Sample blurred image (already in linear space from pass 0).
+    // AUTO_LINES also enables full scanline-height integration to reduce jaggies.
+    float chanValue;
+    if(global.AUTO_LINES > 0.5) {
+        chanValue = sampleChannelOverScanlineHeight(sampleUV, channel, targetLines);
+    } else {
+        chanValue = sampleChannelAt(sampleUV, channel);
+    }
 
     // Per-channel width based on channel brightness
     float scanlineWidth = calcScanlineWidth1(chanValue, baseWidth, minWidth, maxWidth);
