@@ -57,6 +57,7 @@ private:
     CaptureOptions& m_captureOptions;
     float           m_dpiScale;
     bool            m_useNiceView {true};
+    int             m_paramRefreshRetries {0};
 
     std::vector<ParamsTrackbar> m_trackbars;
 

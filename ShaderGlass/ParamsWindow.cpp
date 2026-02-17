@@ -28,6 +28,9 @@ constexpr int VIEW_TOGGLE_LEFT = 10;
 constexpr int VIEW_TOGGLE_TOP = 20;
 constexpr int TOP_CONTROL_GAP = 10;
 constexpr int ID_VIEWMODE_TOGGLE = 50001;
+constexpr UINT IDT_RETRY_REBUILD_PARAMS = 50002;
+constexpr int MAX_PARAM_REFRESH_RETRIES = 12;
+constexpr UINT PARAM_REFRESH_RETRY_MS = 75;
 
 namespace
 {
@@ -491,6 +494,26 @@ void ParamsWindow::LayoutTrackbarControl(ParamsTrackbar& trackbar, size_t index,
 
 void ParamsWindow::RebuildControls(bool doResize)
 {
+    auto params = m_captureManager.Params();
+    if(m_captureManager.IsActive() && params.empty())
+    {
+        if(m_paramRefreshRetries < MAX_PARAM_REFRESH_RETRIES)
+        {
+            ++m_paramRefreshRetries;
+            SetTimer(m_mainWindow, IDT_RETRY_REBUILD_PARAMS, PARAM_REFRESH_RETRY_MS, NULL);
+            if(doResize)
+            {
+                Resize();
+            }
+            return;
+        }
+    }
+    else
+    {
+        m_paramRefreshRetries = 0;
+        KillTimer(m_mainWindow, IDT_RETRY_REBUILD_PARAMS);
+    }
+
     for(auto& t : m_trackbars)
     {
         if(t.paramNameWnd)
@@ -541,7 +564,7 @@ void ParamsWindow::RebuildControls(bool doResize)
         SendMessage(m_hwndTip, TTM_SETMAXTIPWIDTH, 0, maxTooltipWidth);
     }
 
-    for(const auto& pt : m_captureManager.Params())
+    for(const auto& pt : params)
     {
         const auto& p = std::get<1>(pt);
         if(p->maxValue != p->minValue)
@@ -604,6 +627,15 @@ LRESULT CALLBACK ParamsWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
     }
     case WM_SIZE: {
         Resize();
+        break;
+    }
+    case WM_TIMER: {
+        if(wParam == IDT_RETRY_REBUILD_PARAMS)
+        {
+            KillTimer(hWnd, IDT_RETRY_REBUILD_PARAMS);
+            RebuildControls(true);
+            return 0;
+        }
         break;
     }
     case WM_MOUSEWHEEL:
