@@ -13,7 +13,7 @@
 //       triad input areas. Would eliminate clipping naturally (width encodes energy, not brightness).
 
 // === PARAMETERS ===
-#pragma parameter SHADOW_MASK_MODE "SHADOW MASK (Off / Single / Double)" 1.0 0.0 2.0 1.0
+#pragma parameter SHADOW_MASK_MODE "SHADOW MASK (Off/Single/Double) || Emulates the look of a shadow mask while preserving overall light energy. Reduces mask detail in lows to aid with digital processing on some displays. Spills color between phosphors and into the gutter to preserve brightness in highlights." 1.0 0.0 2.0 1.0
 #pragma parameter MASK_CLIPSAFE_CURVE "MASK: ClipSafe Luma Curve" 1.0 0.2 4.0 0.05
 #pragma parameter MASK_CLIPSAFE_CUTOFF "MASK: ClipSafe Luma Cutoff" 0.42 0.05 1.0 0.01
 #pragma parameter MASK_GAIN "MASK DEBUG: Post Gain" 1.10 0.8 1.3 0.01

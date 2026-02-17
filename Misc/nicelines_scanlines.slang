@@ -11,10 +11,10 @@
 // Each channel gets its own independent scanline position and mask.
 
 // === PARAMETERS ===
-#pragma parameter SCANLINE_MODE "AUTO / 224p / 240p / MANUAL" 0.0 0.0 3.0 1.0
-#pragma parameter MANUAL_LINES "MANUAL Scanline Count (arrow keys to increment)" 360.0 120.0 480.0 1.0
-#pragma parameter AUTO_LINES "SCANLINE ROUNDING (anti-moire for 3D games)" 0.0 0.0 1.0 1.0
-#pragma parameter CONV_STRENGTH "MISCONVERGENCE Strength" 0.5 0.0 1.0 0.1
+#pragma parameter SCANLINE_MODE "SCANLINES (Auto/224p/240p/Manual) || Auto mode requires new auto detect functionality of ShaderGlass." 0.0 0.0 3.0 1.0
+#pragma parameter MANUAL_LINES "MANUAL || Scanline Count for Manual Mode. Use arrow keys to increment by 1." 360.0 120.0 480.0 1.0
+#pragma parameter AUTO_LINES "SCANLINE COUNT ROUNDING || Helpful to eliminate moire with 3D games. Rounds the number of scanlines to be a multiple of the output resolution for integer scaling." 0.0 0.0 1.0 1.0
+#pragma parameter CONV_STRENGTH "MISCONVERGENCE || Emulates the look of bad dynamic (ie. corner) convergence. 0.0 is off, 1.0 is full strength." 0.5 0.0 1.0 0.1
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;

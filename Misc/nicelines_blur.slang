@@ -6,7 +6,7 @@
 // Output: smeared image in linear space (float framebuffer)
 
 // === PARAMETERS ===
-#pragma parameter H_BLUR "SMEAR: RGB / S-Video / Composite" 1.0 0.0 2.0 1.0
+#pragma parameter H_BLUR "SMEAR (RGB/S-Video/Composite) || Horizontal smearing to approximate the signal resolution. Composite should blend dithered pixels on 240p titles." 1.0 0.0 2.0 1.0
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
