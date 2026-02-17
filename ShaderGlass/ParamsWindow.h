@@ -27,9 +27,8 @@ struct ParamsTrackbar
     HWND trackBarWnd;
     HWND paramNameWnd;
     HWND paramValueWnd;
-    bool isCheckbox;
-    std::string checkboxOffText;
-    std::string checkboxOnText;
+    int displayPrecision;
+    std::vector<std::string> stateLabels;
 
     std::vector<ShaderParam*> params;
 };
@@ -61,7 +60,7 @@ private:
 
     std::vector<ParamsTrackbar> m_trackbars;
 
-    void AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iStep, const char* name, ShaderParam* p, bool isCheckbox = false);
+    void AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iStep, const char* name, ShaderParam* p);
     void Resize();
     void RebuildControls(bool doResize);
 

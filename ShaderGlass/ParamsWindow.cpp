@@ -21,8 +21,6 @@ constexpr int WINDOW_WIDTH  = 670;
 constexpr int WINDOW_HEIGHT = 600;
 constexpr int TRACK_WIDTH   = 200;
 constexpr int TRACK_HEIGHT  = 30;
-constexpr int CHECKBOX_WIDTH = 132;
-constexpr int CHECKBOX_HEIGHT = 34;
 constexpr int VIEW_TOGGLE_WIDTH = 155;
 constexpr int VIEW_TOGGLE_HEIGHT = 25;
 constexpr int VIEW_TOGGLE_LEFT = 10;
@@ -31,29 +29,6 @@ constexpr int ID_VIEWMODE_TOGGLE = 50001;
 
 namespace
 {
-bool IsBinaryParam(const ShaderParam& param)
-{
-    if(param.maxValue == param.minValue || param.stepValue <= 0.0f)
-    {
-        return false;
-    }
-
-    float span = param.maxValue - param.minValue;
-    if(span <= 0.0f)
-    {
-        return false;
-    }
-
-    float effectiveSteps = span / param.stepValue;
-    if(effectiveSteps <= 0.0f)
-    {
-        return false;
-    }
-
-    int roundedSteps = (int)roundf(effectiveSteps);
-    return roundedSteps == 1 && fabsf(effectiveSteps - roundedSteps) < 0.0001f;
-}
-
 std::string TrimCopy(const std::string& value)
 {
     size_t start = value.find_first_not_of(" \t");
@@ -66,21 +41,18 @@ std::string TrimCopy(const std::string& value)
     return value.substr(start, end - start + 1);
 }
 
-struct BinaryLabelText
+struct StateLabelText
 {
     std::string leftLabel;
-    std::string offText;
-    std::string onText;
+    std::vector<std::string> stateLabels;
 };
 
-BinaryLabelText ParseBinaryLabelText(const char* rawLabel)
+StateLabelText ParseStateLabelText(const char* rawLabel)
 {
     std::string label = rawLabel ? rawLabel : "";
 
-    BinaryLabelText output;
+    StateLabelText output;
     output.leftLabel = label;
-    output.offText   = "OFF";
-    output.onText    = "ON";
 
     size_t openParen = label.rfind('(');
     size_t closeParen = label.rfind(')');
@@ -90,25 +62,82 @@ BinaryLabelText ParseBinaryLabelText(const char* rawLabel)
     }
 
     std::string inside = TrimCopy(label.substr(openParen + 1, closeParen - openParen - 1));
-    size_t      slash  = inside.find('/');
-    if(slash == std::string::npos)
+    std::vector<std::string> labels;
+    size_t start = 0;
+    while(start < inside.size())
     {
-        return output;
+        size_t slash = inside.find('/', start);
+        std::string token = TrimCopy(inside.substr(start, slash == std::string::npos ? std::string::npos : slash - start));
+        if(!token.empty())
+        {
+            labels.push_back(token);
+        }
+        if(slash == std::string::npos)
+        {
+            break;
+        }
+        start = slash + 1;
     }
 
-    std::string trueText  = TrimCopy(inside.substr(0, slash));
-    std::string falseText = TrimCopy(inside.substr(slash + 1));
     std::string leftLabel = TrimCopy(label.substr(0, openParen));
 
-    if(leftLabel.empty() || trueText.empty() || falseText.empty())
+    if(leftLabel.empty() || labels.size() < 2)
     {
         return output;
     }
 
     output.leftLabel = leftLabel;
-    output.offText   = falseText;
-    output.onText    = trueText;
+    output.stateLabels = labels;
     return output;
+}
+
+int GetStepPrecision(float step)
+{
+    if(step <= 0.0f)
+    {
+        return 3;
+    }
+
+    char stepBuffer[64] = {};
+    snprintf(stepBuffer, sizeof(stepBuffer), "%.6f", step);
+    std::string stepText(stepBuffer);
+
+    while(!stepText.empty() && stepText.back() == '0')
+    {
+        stepText.pop_back();
+    }
+    if(!stepText.empty() && stepText.back() == '.')
+    {
+        stepText.pop_back();
+    }
+
+    auto dot = stepText.find('.');
+    if(dot == std::string::npos)
+    {
+        return 0;
+    }
+
+    return (int)(stepText.size() - dot - 1);
+}
+
+std::string FormatNumericValue(float value, int precision)
+{
+    if(fabsf(value) < 0.000001f)
+    {
+        value = 0.0f;
+    }
+
+    char valueBuffer[64] = {};
+    if(precision <= 0)
+    {
+        snprintf(valueBuffer, sizeof(valueBuffer), "%.0f", value);
+    }
+    else
+    {
+        snprintf(valueBuffer, sizeof(valueBuffer), "%.*f", precision, value);
+    }
+
+    return valueBuffer;
 }
 } // namespace
 
@@ -354,7 +383,6 @@ void ParamsWindow::RebuildControls(bool doResize)
         const auto& p = std::get<1>(pt);
         if(p->maxValue != p->minValue)
         {
-            bool isBinary = IsBinaryParam(*p);
             int numSteps = 10;
             if(p->stepValue > 0.0f)
             {
@@ -367,14 +395,7 @@ void ParamsWindow::RebuildControls(bool doResize)
             int startValue = (int)roundf(numSteps * (p->currentValue - p->minValue) / (p->maxValue - p->minValue));
             startValue     = (std::max)(0, (std::min)(startValue, numSteps));
 
-            if(isBinary && m_useNiceView)
-            {
-                AddTrackbar(0, 1, startValue > 0 ? 1 : 0, 1, p->name.c_str(), p, true);
-            }
-            else
-            {
-                AddTrackbar(0, numSteps, startValue, numSteps, p->name.c_str(), p);
-            }
+            AddTrackbar(0, numSteps, startValue, numSteps, p->name.c_str(), p);
         }
     }
 
@@ -481,7 +502,7 @@ LRESULT CALLBACK ParamsWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
         if(lParam != 0)
         {
             id       = GetDlgCtrlID((HWND)lParam);
-            if(id < 0 || id >= (int)m_trackbars.size() || m_trackbars[id].isCheckbox)
+            if(id < 0 || id >= (int)m_trackbars.size())
             {
                 return 0;
             }
@@ -494,8 +515,23 @@ LRESULT CALLBACK ParamsWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
                 value = p->minValue + (p->maxValue - p->minValue) * pos / m_trackbars[id].steps;
             }
 
+            std::string displayText;
+            if(m_useNiceView && !m_trackbars[id].stateLabels.empty())
+            {
+                int labelIndex = (std::max)(0, (std::min)((int)pos, (int)m_trackbars[id].stateLabels.size() - 1));
+                displayText = m_trackbars[id].stateLabels[labelIndex];
+            }
+            else if(m_useNiceView)
+            {
+                displayText = FormatNumericValue(value, m_trackbars[id].displayPrecision);
+            }
+            else
+            {
+                displayText = std::to_string(value);
+            }
+
             if(m_trackbars[id].paramValueWnd)
-                SetWindowText(m_trackbars[id].paramValueWnd, convertCharArrayToLPCWSTR(std::to_string(value).c_str()));
+                SetWindowText(m_trackbars[id].paramValueWnd, convertCharArrayToLPCWSTR(displayText.c_str()));
 
             for(auto& tp : m_trackbars[id].params)
             {
@@ -526,30 +562,6 @@ LRESULT CALLBACK ParamsWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
                 m_useNiceView = SendMessage(m_viewModeToggleWnd, BM_GETCHECK, 0, 0) == BST_CHECKED;
                 RebuildControls(true);
             }
-            else if(lParam)
-            {
-                const auto controlHwnd = (HWND)lParam;
-                int        id          = GetDlgCtrlID(controlHwnd);
-                if(id >= 0 && id < (int)m_trackbars.size() && m_trackbars[id].isCheckbox && m_trackbars[id].trackBarWnd == controlHwnd)
-                {
-                    const auto checked = SendMessage(controlHwnd, BM_GETCHECK, 0, 0) == BST_CHECKED;
-                    auto       p       = *m_trackbars[id].params.begin();
-                    float      value   = checked ? p->minValue : p->maxValue;
-
-                    const std::string& caption = checked ? m_trackbars[id].checkboxOnText : m_trackbars[id].checkboxOffText;
-                    if(!caption.empty())
-                    {
-                        SetWindowText(controlHwnd, convertCharArrayToLPCWSTR(caption.c_str()));
-                    }
-
-                    for(auto& tp : m_trackbars[id].params)
-                    {
-                        tp->currentValue = value;
-                    }
-
-                    m_captureManager.UpdateParams();
-                }
-            }
             return 0;
         }
         }
@@ -570,12 +582,12 @@ LRESULT CALLBACK ParamsWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
     return DefWindowProc(hWnd, message, wParam, lParam);
 }
 
-void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, const char* name, ShaderParam* p, bool isCheckbox)
+void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, const char* name, ShaderParam* p)
 {
     // de-dupe parameters
     for(auto& t : m_trackbars)
     {
-        if(strcmp(t.paramName, name) == 0 && t.def == iStart && t.steps == iSteps && t.isCheckbox == isCheckbox)
+        if(strcmp(t.paramName, name) == 0 && t.def == iStart && t.steps == iSteps)
         {
             t.params.push_back(p);
             return;
@@ -584,118 +596,95 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
 
     const char* label   = p->description.size() ? p->description.c_str() : name;
     const char* tooltip = p->name.c_str();
+    auto labelText = ParseStateLabelText(label);
 
     HWND hwndTrack = NULL;
     HWND paramNameWnd = NULL;
     HWND paramValueWnd = NULL;
-    std::string checkboxOffText;
-    std::string checkboxOnText;
+    bool useStateLabels = m_useNiceView && !labelText.stateLabels.empty() && labelText.stateLabels.size() == iSteps + 1;
+    int  displayPrecision = GetStepPrecision(p->stepValue);
 
-    if(isCheckbox)
+    hwndTrack = CreateWindowEx(0,
+                               TRACKBAR_CLASS,
+                               L"Trackbar Control",
+                               WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS,
+                               (LONG)(m_dpiScale * STATIC_WIDTH),
+                               (LONG)(m_dpiScale * (m_trackbars.size() * PARAM_HEIGHT + PARAMS_TOP)),
+                               (LONG)(m_dpiScale * TRACK_WIDTH),
+                               (LONG)(m_dpiScale * TRACK_HEIGHT),
+                               m_mainWindow,
+                               (HMENU)m_trackbars.size(),
+                               m_instance,
+                               NULL);
+
+    SendMessage(hwndTrack,
+                TBM_SETRANGE,
+                (WPARAM)TRUE, // redraw flag
+                (LPARAM)MAKELONG(iMin, iMax));
+
+    SendMessage(hwndTrack,
+                TBM_SETPOS,
+                (WPARAM)TRUE, // redraw flag
+                (LPARAM)iStart);
+
+    SendMessage(hwndTrack, WM_SETFONT, (LPARAM)m_font, true);
+
+    const char* leftLabel = label;
+    if(useStateLabels && !labelText.leftLabel.empty())
     {
-        auto labelText = ParseBinaryLabelText(label);
-        checkboxOffText = labelText.offText;
-        checkboxOnText  = labelText.onText;
+        leftLabel = labelText.leftLabel.c_str();
+    }
 
-        const int  rowTop      = (int)(m_dpiScale * (m_trackbars.size() * PARAM_HEIGHT + PARAMS_TOP));
-        const LONG rowHeight   = (LONG)(m_dpiScale * PARAM_HEIGHT);
-        const LONG controlLeft = (LONG)(m_dpiScale * (STATIC_WIDTH + (TRACK_WIDTH - CHECKBOX_WIDTH) / 2));
-        const LONG controlTop  = rowTop + (rowHeight - (LONG)(m_dpiScale * CHECKBOX_HEIGHT)) / 2;
-        const bool checked     = iStart == 0;
+    paramNameWnd = CreateWindowEx(0,
+                                  L"STATIC",
+                                  convertCharArrayToLPCWSTR(leftLabel),
+                                  SS_RIGHT | SS_NOTIFY | WS_CHILD | WS_VISIBLE,
+                                  2,
+                                  0,
+                                  (LONG)(m_dpiScale * STATIC_WIDTH - 2),
+                                  (LONG)(m_dpiScale * STATIC_HEIGHT),
+                                  m_mainWindow,
+                                  NULL,
+                                  m_instance,
+                                  NULL);
+    SendMessage(hwndTrack, TBM_SETBUDDY, (WPARAM)TRUE, (LPARAM)paramNameWnd);
+    SendMessage(paramNameWnd, WM_SETFONT, (LPARAM)m_font, true);
 
-        paramNameWnd = CreateWindowEx(0,
-                                      L"STATIC",
-                                      convertCharArrayToLPCWSTR(labelText.leftLabel.c_str()),
-                                      SS_RIGHT | SS_CENTERIMAGE | SS_NOTIFY | WS_CHILD | WS_VISIBLE,
-                                      2,
-                                      rowTop,
-                                      (LONG)(m_dpiScale * STATIC_WIDTH - 2),
-                                      (LONG)(m_dpiScale * STATIC_HEIGHT),
-                                      m_mainWindow,
-                                      NULL,
-                                      m_instance,
-                                      NULL);
-        SendMessage(paramNameWnd, WM_SETFONT, (LPARAM)m_font, true);
+    float value = p->minValue;
+    if(iSteps > 0)
+    {
+        value = p->minValue + (p->maxValue - p->minValue) * iStart / iSteps;
+    }
 
-        hwndTrack = CreateWindowEx(0,
-                                   L"BUTTON",
-                                   convertCharArrayToLPCWSTR(checked ? labelText.onText.c_str() : labelText.offText.c_str()),
-                                   WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_CENTER | BS_VCENTER,
-                                   controlLeft,
-                                   controlTop,
-                                   (LONG)(m_dpiScale * CHECKBOX_WIDTH),
-                                   (LONG)(m_dpiScale * CHECKBOX_HEIGHT),
-                                   m_mainWindow,
-                                   (HMENU)m_trackbars.size(),
-                                   m_instance,
-                                   NULL);
-
-        SendMessage(hwndTrack, BM_SETCHECK, checked ? BST_CHECKED : BST_UNCHECKED, 0);
-        SendMessage(hwndTrack, WM_SETFONT, (LPARAM)m_font, true);
+    std::string displayText;
+    if(useStateLabels)
+    {
+        int labelIndex = (std::max)(0, (std::min)((int)iStart, (int)labelText.stateLabels.size() - 1));
+        displayText = labelText.stateLabels[labelIndex];
+    }
+    else if(m_useNiceView)
+    {
+        displayText = FormatNumericValue(value, displayPrecision);
     }
     else
     {
-        hwndTrack = CreateWindowEx(0,
-                                   TRACKBAR_CLASS,
-                                   L"Trackbar Control",
-                                   WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS,
+        displayText = std::to_string(value);
+    }
+
+    paramValueWnd = CreateWindowEx(0,
+                                   L"STATIC",
+                                   convertCharArrayToLPCWSTR(displayText.c_str()),
+                                   SS_LEFT | WS_CHILD | WS_VISIBLE,
+                                   0,
+                                   0,
                                    (LONG)(m_dpiScale * STATIC_WIDTH),
-                                   (LONG)(m_dpiScale * (m_trackbars.size() * PARAM_HEIGHT + PARAMS_TOP)),
-                                   (LONG)(m_dpiScale * TRACK_WIDTH),
-                                   (LONG)(m_dpiScale * TRACK_HEIGHT),
+                                   (LONG)(m_dpiScale * STATIC_HEIGHT),
                                    m_mainWindow,
-                                   (HMENU)m_trackbars.size(),
+                                   NULL,
                                    m_instance,
                                    NULL);
-
-        SendMessage(hwndTrack,
-                    TBM_SETRANGE,
-                    (WPARAM)TRUE, // redraw flag
-                    (LPARAM)MAKELONG(iMin, iMax));
-
-        SendMessage(hwndTrack,
-                    TBM_SETPOS,
-                    (WPARAM)TRUE, // redraw flag
-                    (LPARAM)iStart);
-
-        SendMessage(hwndTrack, WM_SETFONT, (LPARAM)m_font, true);
-
-        paramNameWnd = CreateWindowEx(0,
-                                      L"STATIC",
-                                      convertCharArrayToLPCWSTR(label),
-                                      SS_RIGHT | SS_NOTIFY | WS_CHILD | WS_VISIBLE,
-                                      2,
-                                      0,
-                                      (LONG)(m_dpiScale * STATIC_WIDTH - 2),
-                                      (LONG)(m_dpiScale * STATIC_HEIGHT),
-                                      m_mainWindow,
-                                      NULL,
-                                      m_instance,
-                                      NULL);
-        SendMessage(hwndTrack, TBM_SETBUDDY, (WPARAM)TRUE, (LPARAM)paramNameWnd);
-        SendMessage(paramNameWnd, WM_SETFONT, (LPARAM)m_font, true);
-
-        float value = p->minValue;
-        if(iSteps > 0)
-        {
-            value = p->minValue + (p->maxValue - p->minValue) * iStart / iSteps;
-        }
-
-        paramValueWnd = CreateWindowEx(0,
-                                       L"STATIC",
-                                       convertCharArrayToLPCWSTR(std::to_string(value).c_str()),
-                                       SS_LEFT | WS_CHILD | WS_VISIBLE,
-                                       0,
-                                       0,
-                                       (LONG)(m_dpiScale * STATIC_WIDTH),
-                                       (LONG)(m_dpiScale * STATIC_HEIGHT),
-                                       m_mainWindow,
-                                       NULL,
-                                       m_instance,
-                                       NULL);
-        SendMessage(hwndTrack, TBM_SETBUDDY, (WPARAM)FALSE, (LPARAM)paramValueWnd);
-        SendMessage(paramValueWnd, WM_SETFONT, (LPARAM)m_font, true);
-    }
+    SendMessage(hwndTrack, TBM_SETBUDDY, (WPARAM)FALSE, (LPARAM)paramValueWnd);
+    SendMessage(paramValueWnd, WM_SETFONT, (LPARAM)m_font, true);
 
     // tooltip
     if(strlen(tooltip) != 0)
@@ -709,23 +698,26 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
         toolInfo.lpszText = convertCharArrayToLPCWSTR(tooltip);
         SendMessage(m_hwndTip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo);
 
-        if(isCheckbox && hwndTrack)
-        {
-            toolInfo.uId = (UINT_PTR)hwndTrack;
-            SendMessage(m_hwndTip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo);
-        }
+        toolInfo.uId = (UINT_PTR)hwndTrack;
+        SendMessage(m_hwndTip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo);
     }
 
     ParamsTrackbar pt;
     pt.paramName     = name;
+    pt.min           = p->minValue;
+    pt.max           = p->maxValue;
+    pt.step          = p->stepValue;
+    pt.val           = p->currentValue;
     pt.trackBarWnd   = hwndTrack;
     pt.paramNameWnd  = paramNameWnd;
     pt.paramValueWnd = paramValueWnd;
     pt.def           = iStart;
     pt.steps         = iSteps;
-    pt.isCheckbox    = isCheckbox;
-    pt.checkboxOffText = checkboxOffText;
-    pt.checkboxOnText  = checkboxOnText;
+    pt.displayPrecision = displayPrecision;
+    if(useStateLabels)
+    {
+        pt.stateLabels = labelText.stateLabels;
+    }
     pt.params.push_back(p);
 
     m_trackbars.emplace_back(pt);
