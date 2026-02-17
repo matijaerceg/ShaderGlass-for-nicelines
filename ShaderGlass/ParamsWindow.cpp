@@ -386,7 +386,7 @@ void ParamsWindow::Resize()
     const LONG toggleH   = (LONG)(m_dpiScale * VIEW_TOGGLE_HEIGHT);
 
     LONG x = topLeft;
-    if(IsWindowVisible(m_resetButtonWnd))
+    if(!m_trackbars.empty())
     {
         SetWindowPos(m_resetButtonWnd, NULL, x, topY, buttonW, buttonH, SWP_NOZORDER | SWP_NOACTIVATE);
         x += buttonW + gap;
@@ -557,7 +557,7 @@ void ParamsWindow::RebuildControls(bool doResize)
     }
 
     if(m_trackbars.size())
-        ShowWindow(m_resetButtonWnd, SW_SHOW);
+        ShowWindow(m_resetButtonWnd, SW_SHOWNA);
     else
         ShowWindow(m_resetButtonWnd, SW_HIDE);
 
