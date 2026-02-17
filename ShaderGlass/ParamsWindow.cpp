@@ -579,7 +579,14 @@ LRESULT CALLBACK ParamsWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
         if(wParam)
         {
             // showing
-            RebuildControls(true);
+            if(m_captureManager.IsActive())
+            {
+                RebuildControls(true);
+            }
+            else
+            {
+                Resize();
+            }
         }
         break;
     }
@@ -723,10 +730,7 @@ LRESULT CALLBACK ParamsWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
         switch(controlId)
         {
         case IDM_UPDATE_PARAMS: {
-            if(IsWindowVisible(m_mainWindow))
-            {
-                RebuildControls(true);
-            }
+            RebuildControls(true);
             return 0;
         }
         }
