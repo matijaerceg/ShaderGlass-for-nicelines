@@ -6,7 +6,8 @@
 // Input B (Mask):   base masked image from pass 2 (linear, via alias)
 // Output: final image in sRGB
 
-#pragma parameter CURVATURE "CURVATURE || Emulates the look of a curved tube when set to ON." 0.0 0.0 1.0 1.0
+#pragma parameter CURVATURE "CURVATURE" 0.0 0.0 1.0 1.0
+// SG_TOOLTIP CURVATURE: Emulates the look of a curved tube when set to ON.
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;

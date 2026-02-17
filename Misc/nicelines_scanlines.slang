@@ -11,11 +11,16 @@
 // Each channel gets its own independent scanline position and mask.
 
 // === PARAMETERS ===
-#pragma parameter SCANLINE_MODE "SCANLINES (Auto/224p/240p/Manual) || Auto mode requires new auto detect functionality of ShaderGlass." 0.0 0.0 3.0 1.0
-#pragma parameter MANUAL_LINES "MANUAL || Scanline Count for Manual Mode. Use arrow keys to increment by 1." 360.0 120.0 480.0 1.0
-#pragma parameter AUTO_LINES "3D GAME MODE || Turn on if you're not playing a pixel-perfect 2D game. Rounds the number of scanlines to a multiple of output resolution and samples the full height of a scanline rather than just its center. Works well to smooth out jaggies on high-resolution sources as well as to prevent moire." 0.0 0.0 1.0 1.0
-#pragma parameter SHADOW_MASK_MODE "SHADOW MASK (Off/Single/Double) || Emulates the look of a shadow mask while preserving overall light energy. Reduces mask detail in lows to aid with digital processing on some displays. Spills color between phosphors and into the gutter to preserve brightness in highlights." 1.0 0.0 2.0 1.0
-#pragma parameter CONV_STRENGTH "MISCONVERGENCE || Emulates the look of bad dynamic (ie. corner) convergence. 0.0 is off, 1.0 is full strength." 0.5 0.0 1.0 0.1
+#pragma parameter SCANLINE_MODE "SCANLINES (Auto/224p/240p/Manual)" 0.0 0.0 3.0 1.0
+// SG_TOOLTIP SCANLINE_MODE: Auto mode requires new auto detect functionality of ShaderGlass.
+#pragma parameter MANUAL_LINES "MANUAL" 360.0 120.0 480.0 1.0
+// SG_TOOLTIP MANUAL_LINES: Scanline Count for Manual Mode. Use arrow keys to increment by 1.
+#pragma parameter AUTO_LINES "3D GAME MODE" 0.0 0.0 1.0 1.0
+// SG_TOOLTIP AUTO_LINES: Turn on if you're not playing a pixel-perfect 2D game. Rounds the number of scanlines to a multiple of output resolution and samples the full height of a scanline rather than just its center. Works well to smooth out jaggies on high-resolution sources as well as to prevent moire.
+#pragma parameter SHADOW_MASK_MODE "SHADOW MASK (Off/Single/Double)" 1.0 0.0 2.0 1.0
+// SG_TOOLTIP SHADOW_MASK_MODE: Emulates the look of a shadow mask while preserving overall light energy. Reduces mask detail in lows to aid with digital processing on some displays. Spills color between phosphors and into the gutter to preserve brightness in highlights.
+#pragma parameter CONV_STRENGTH "MISCONVERGENCE" 0.5 0.0 1.0 0.1
+// SG_TOOLTIP CONV_STRENGTH: Emulates the look of bad dynamic (ie. corner) convergence. 0.0 is off, 1.0 is full strength.
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;

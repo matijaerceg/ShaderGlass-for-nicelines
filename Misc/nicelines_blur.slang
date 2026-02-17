@@ -6,10 +6,14 @@
 // Output: smeared image in linear space (float framebuffer)
 
 // === PARAMETERS ===
-#pragma parameter SCANLINE_MODE "SCANLINES (Auto/224p/240p/Manual) || Auto mode requires new auto detect functionality of ShaderGlass." 0.0 0.0 3.0 1.0
-#pragma parameter MANUAL_LINES "MANUAL || Scanline Count for Manual Mode. Use arrow keys to increment by 1." 360.0 120.0 480.0 1.0
-#pragma parameter AUTO_LINES "3D GAME MODE || Turn on if you're not playing a pixel-perfect 2D game. Rounds the number of scanlines to a multiple of output resolution and samples the full height of a scanline rather than just its center. Works well to smooth out jaggies on high-resolution sources as well as to prevent moire." 0.0 0.0 1.0 1.0
-#pragma parameter H_BLUR "SMEAR (RGB/S-Video/Composite) || Horizontal smearing to approximate the signal resolution. Composite should blend dithered pixels on 240p titles." 1.0 0.0 2.0 1.0
+#pragma parameter SCANLINE_MODE "SCANLINES (Auto/224p/240p/Manual)" 0.0 0.0 3.0 1.0
+// SG_TOOLTIP SCANLINE_MODE: Auto mode requires new auto detect functionality of ShaderGlass.
+#pragma parameter MANUAL_LINES "MANUAL" 360.0 120.0 480.0 1.0
+// SG_TOOLTIP MANUAL_LINES: Scanline Count for Manual Mode. Use arrow keys to increment by 1.
+#pragma parameter AUTO_LINES "3D GAME MODE" 0.0 0.0 1.0 1.0
+// SG_TOOLTIP AUTO_LINES: Turn on if you're not playing a pixel-perfect 2D game. Rounds the number of scanlines to a multiple of output resolution and samples the full height of a scanline rather than just its center. Works well to smooth out jaggies on high-resolution sources as well as to prevent moire.
+#pragma parameter H_BLUR "SMEAR (RGB/S-Video/Composite)" 1.0 0.0 2.0 1.0
+// SG_TOOLTIP H_BLUR: Horizontal smearing to approximate the signal resolution. Composite should blend dithered pixels on 240p titles.
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 MVP;
