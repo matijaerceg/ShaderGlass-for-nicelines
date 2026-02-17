@@ -563,11 +563,12 @@ void ParamsWindow::RebuildControls(bool doResize)
         RECT clientRect = {};
         GetClientRect(m_mainWindow, &clientRect);
 
-        const int scaledBaseWidth = (std::max)(1, (int)std::lround(m_dpiScale * TOOLTIP_MAX_WIDTH));
-        const int windowRelativeWidth = (std::max)(1, (clientRect.right - clientRect.left) / 3);
+        const int scaledBaseWidth = (std::max)(1, (int)roundf(m_dpiScale * TOOLTIP_MAX_WIDTH));
+        const int clientWidth = (int)(clientRect.right - clientRect.left);
+        const int windowRelativeWidth = (std::max)(1, clientWidth / 3);
         const int maxTooltipWidth = (std::min)(scaledBaseWidth, windowRelativeWidth);
 
-        SendMessage(m_hwndTip, TTM_SETMAXTIPWIDTH, 0, maxTooltipWidth);
+        SendMessage(m_hwndTip, TTM_SETMAXTIPWIDTH, 0, (LPARAM)maxTooltipWidth);
     }
 
     for(const auto& pt : params)
