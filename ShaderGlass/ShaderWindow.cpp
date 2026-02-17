@@ -2131,6 +2131,7 @@ LRESULT CALLBACK ShaderWindow::WndProc(HWND hWnd, UINT message, WPARAM wParam, L
                     m_captureManager.StartVerticalAutoDetectNow();
                     UpdateGPUName();
                     m_captureOptions.paused = false;
+                    PostMessage(m_paramsWindow, WM_COMMAND, IDM_UPDATE_PARAMS, 0);
                 }
             }
             break;
