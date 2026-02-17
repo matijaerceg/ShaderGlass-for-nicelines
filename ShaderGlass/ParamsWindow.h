@@ -61,6 +61,7 @@ private:
     std::vector<ParamsTrackbar> m_trackbars;
 
     void AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iStep, const char* name, ShaderParam* p);
+    void LayoutTrackbarControl(ParamsTrackbar& trackbar, size_t index, int scrollPos);
     void Resize();
     void RebuildControls(bool doResize);
 

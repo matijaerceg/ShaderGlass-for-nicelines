@@ -329,6 +329,96 @@ void ParamsWindow::Resize()
         si.nPos = 0;
         SetScrollInfo(m_mainWindow, SB_VERT, &si, true);
     }
+
+    for(size_t i = 0; i < m_trackbars.size(); ++i)
+    {
+        LayoutTrackbarControl(m_trackbars[i], i, si.nPos);
+    }
+}
+
+void ParamsWindow::LayoutTrackbarControl(ParamsTrackbar& trackbar, size_t index, int scrollPos)
+{
+    RECT rect = {};
+    GetClientRect(m_mainWindow, &rect);
+
+    const LONG clientWidth = (std::max)(1L, rect.right - rect.left);
+    const LONG margin      = (LONG)(m_dpiScale * 6.0f);
+    const LONG gap         = (LONG)(m_dpiScale * 8.0f);
+
+    LONG usableWidth = clientWidth - margin * 2 - gap * 2;
+    if(usableWidth < 3)
+    {
+        usableWidth = 3;
+    }
+
+    LONG labelWidth  = (LONG)roundf(usableWidth * 0.5f);
+    LONG sliderWidth = (LONG)roundf(usableWidth * 0.3f);
+    LONG valueWidth  = usableWidth - labelWidth - sliderWidth;
+
+    const LONG minLabelWidth  = (LONG)(m_dpiScale * 120.0f);
+    const LONG minSliderWidth = (LONG)(m_dpiScale * 90.0f);
+    const LONG minValueWidth  = (LONG)(m_dpiScale * 70.0f);
+    const LONG minTotalWidth  = minLabelWidth + minSliderWidth + minValueWidth;
+
+    if(usableWidth >= minTotalWidth)
+    {
+        labelWidth  = (std::max)(labelWidth, minLabelWidth);
+        sliderWidth = (std::max)(sliderWidth, minSliderWidth);
+        valueWidth  = usableWidth - labelWidth - sliderWidth;
+
+        if(valueWidth < minValueWidth)
+        {
+            LONG deficit = minValueWidth - valueWidth;
+
+            LONG steal = (std::min)(deficit, labelWidth - minLabelWidth);
+            labelWidth -= steal;
+            deficit -= steal;
+
+            steal = (std::min)(deficit, sliderWidth - minSliderWidth);
+            sliderWidth -= steal;
+            deficit -= steal;
+
+            valueWidth = usableWidth - labelWidth - sliderWidth;
+        }
+    }
+
+    if(labelWidth < 1)
+        labelWidth = 1;
+    if(sliderWidth < 1)
+        sliderWidth = 1;
+    valueWidth = usableWidth - labelWidth - sliderWidth;
+    if(valueWidth < 1)
+    {
+        valueWidth = 1;
+        if(sliderWidth > 1)
+        {
+            --sliderWidth;
+        }
+        else if(labelWidth > 1)
+        {
+            --labelWidth;
+        }
+    }
+
+    const LONG rowTop      = (LONG)(m_dpiScale * (index * PARAM_HEIGHT + PARAMS_TOP)) - (LONG)(scrollPos * 5);
+    const LONG rowHeight   = (LONG)(m_dpiScale * PARAM_HEIGHT);
+    const LONG labelHeight = (LONG)(m_dpiScale * STATIC_HEIGHT);
+    const LONG valueHeight = (LONG)(m_dpiScale * STATIC_HEIGHT);
+    const LONG sliderHeight = (LONG)(m_dpiScale * TRACK_HEIGHT);
+
+    const LONG labelLeft  = margin;
+    const LONG sliderLeft = labelLeft + labelWidth + gap;
+    const LONG valueLeft  = sliderLeft + sliderWidth + gap;
+
+    SetWindowPos(trackbar.paramNameWnd, NULL, labelLeft, rowTop, labelWidth, labelHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+    SetWindowPos(trackbar.trackBarWnd,
+                 NULL,
+                 sliderLeft,
+                 rowTop + (rowHeight - sliderHeight) / 2,
+                 sliderWidth,
+                 sliderHeight,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+    SetWindowPos(trackbar.paramValueWnd, NULL, valueLeft, rowTop, valueWidth, valueHeight, SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 void ParamsWindow::RebuildControls(bool doResize)
@@ -608,9 +698,9 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
                                TRACKBAR_CLASS,
                                L"Trackbar Control",
                                WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS,
-                               (LONG)(m_dpiScale * STATIC_WIDTH),
-                               (LONG)(m_dpiScale * (m_trackbars.size() * PARAM_HEIGHT + PARAMS_TOP)),
-                               (LONG)(m_dpiScale * TRACK_WIDTH),
+                               0,
+                               0,
+                               1,
                                (LONG)(m_dpiScale * TRACK_HEIGHT),
                                m_mainWindow,
                                (HMENU)m_trackbars.size(),
@@ -629,25 +719,18 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
 
     SendMessage(hwndTrack, WM_SETFONT, (LPARAM)m_font, true);
 
-    const char* leftLabel = label;
-    if(useStateLabels && !labelText.leftLabel.empty())
-    {
-        leftLabel = labelText.leftLabel.c_str();
-    }
-
     paramNameWnd = CreateWindowEx(0,
                                   L"STATIC",
-                                  convertCharArrayToLPCWSTR(leftLabel),
+                                  convertCharArrayToLPCWSTR(label),
                                   SS_RIGHT | SS_NOTIFY | WS_CHILD | WS_VISIBLE,
-                                  2,
                                   0,
-                                  (LONG)(m_dpiScale * STATIC_WIDTH - 2),
-                                  (LONG)(m_dpiScale * STATIC_HEIGHT),
+                                  0,
+                                  1,
+                                  1,
                                   m_mainWindow,
                                   NULL,
                                   m_instance,
                                   NULL);
-    SendMessage(hwndTrack, TBM_SETBUDDY, (WPARAM)TRUE, (LPARAM)paramNameWnd);
     SendMessage(paramNameWnd, WM_SETFONT, (LPARAM)m_font, true);
 
     float value = p->minValue;
@@ -677,13 +760,12 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
                                    SS_LEFT | WS_CHILD | WS_VISIBLE,
                                    0,
                                    0,
-                                   (LONG)(m_dpiScale * STATIC_WIDTH),
-                                   (LONG)(m_dpiScale * STATIC_HEIGHT),
+                                   1,
+                                   1,
                                    m_mainWindow,
                                    NULL,
                                    m_instance,
                                    NULL);
-    SendMessage(hwndTrack, TBM_SETBUDDY, (WPARAM)FALSE, (LPARAM)paramValueWnd);
     SendMessage(paramValueWnd, WM_SETFONT, (LPARAM)m_font, true);
 
     // tooltip
@@ -721,6 +803,12 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
     pt.params.push_back(p);
 
     m_trackbars.emplace_back(pt);
+
+    SCROLLINFO si = {};
+    si.cbSize     = sizeof(si);
+    si.fMask      = SIF_POS;
+    GetScrollInfo(m_mainWindow, SB_VERT, &si);
+    LayoutTrackbarControl(m_trackbars.back(), m_trackbars.size() - 1, si.nPos);
 }
 
 bool ParamsWindow::Create(_In_ HINSTANCE hInstance, _In_ int nCmdShow, _In_ HWND shaderWindow)
