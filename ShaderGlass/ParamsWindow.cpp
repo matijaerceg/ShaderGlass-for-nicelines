@@ -63,6 +63,40 @@ struct StateLabelText
     std::vector<std::string> stateLabels;
 };
 
+struct DisplayTextParts
+{
+    std::string label;
+    std::string tooltipPrefix;
+};
+
+DisplayTextParts ParseDisplayTextParts(const char* rawText)
+{
+    std::string text = rawText ? rawText : "";
+
+    DisplayTextParts output;
+    output.label = text;
+
+    size_t separator = text.find("||");
+    if(separator == std::string::npos)
+    {
+        return output;
+    }
+
+    std::string labelPart   = TrimCopy(text.substr(0, separator));
+    std::string tooltipPart = TrimCopy(text.substr(separator + 2));
+
+    if(!labelPart.empty())
+    {
+        output.label = labelPart;
+    }
+    if(!tooltipPart.empty())
+    {
+        output.tooltipPrefix = tooltipPart;
+    }
+
+    return output;
+}
+
 StateLabelText ParseStateLabelText(const char* rawLabel)
 {
     std::string label = rawLabel ? rawLabel : "";
@@ -708,15 +742,28 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
         }
     }
 
-    const char* label   = p->description.size() ? p->description.c_str() : name;
-    const char* tooltip = p->name.c_str();
-    auto labelText = ParseStateLabelText(label);
+    const char* sourceText = p->description.size() ? p->description.c_str() : name;
+    auto displayParts = ParseDisplayTextParts(sourceText);
+    auto labelText = ParseStateLabelText(displayParts.label.c_str());
 
     HWND hwndTrack = NULL;
     HWND paramNameWnd = NULL;
     HWND paramValueWnd = NULL;
-    bool useStateLabels = m_useNiceView && !labelText.stateLabels.empty() && labelText.stateLabels.size() == iSteps + 1;
+    bool useStateLabels = false;
     int  displayPrecision = GetStepPrecision(p->stepValue);
+
+    if(m_useNiceView)
+    {
+        if(!labelText.stateLabels.empty() && labelText.stateLabels.size() == iSteps + 1)
+        {
+            useStateLabels = true;
+        }
+        else if(iSteps == 1)
+        {
+            labelText.stateLabels = {"OFF", "ON"};
+            useStateLabels        = true;
+        }
+    }
 
     hwndTrack = CreateWindowEx(0,
                                TRACKBAR_CLASS,
@@ -746,7 +793,7 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
 
     paramNameWnd = CreateWindowEx(0,
                                   L"STATIC",
-                                  convertCharArrayToLPCWSTR(label),
+                                  convertCharArrayToLPCWSTR(displayParts.label.c_str()),
                                   SS_RIGHT | SS_NOTIFY | WS_CHILD | WS_VISIBLE,
                                   0,
                                   0,
@@ -794,19 +841,27 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
     SendMessage(paramValueWnd, WM_SETFONT, (LPARAM)m_font, true);
 
     // tooltip
-    if(strlen(tooltip) != 0)
     {
-        // Associate the tooltip with the tool.
-        TOOLINFO toolInfo = {0};
-        toolInfo.cbSize   = sizeof(toolInfo);
-        toolInfo.hwnd     = m_mainWindow;
-        toolInfo.uFlags   = TTF_IDISHWND | TTF_SUBCLASS;
-        toolInfo.uId      = (UINT_PTR)(paramNameWnd ? paramNameWnd : hwndTrack);
-        toolInfo.lpszText = convertCharArrayToLPCWSTR(tooltip);
-        SendMessage(m_hwndTip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo);
+        std::string tooltipText = p->name;
+        if(!displayParts.tooltipPrefix.empty())
+        {
+            tooltipText = displayParts.tooltipPrefix + " - " + p->name;
+        }
 
-        toolInfo.uId = (UINT_PTR)hwndTrack;
-        SendMessage(m_hwndTip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo);
+        if(!tooltipText.empty())
+        {
+            // Associate the tooltip with the tool.
+            TOOLINFO toolInfo = {0};
+            toolInfo.cbSize   = sizeof(toolInfo);
+            toolInfo.hwnd     = m_mainWindow;
+            toolInfo.uFlags   = TTF_IDISHWND | TTF_SUBCLASS;
+            toolInfo.uId      = (UINT_PTR)(paramNameWnd ? paramNameWnd : hwndTrack);
+            toolInfo.lpszText = convertCharArrayToLPCWSTR(tooltipText.c_str());
+            SendMessage(m_hwndTip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo);
+
+            toolInfo.uId = (UINT_PTR)hwndTrack;
+            SendMessage(m_hwndTip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo);
+        }
     }
 
     ParamsTrackbar pt;
