@@ -1,6 +1,7 @@
 $ErrorActionPreference = "Stop"
 
-$dst = "X:\ShaderGlass"
+$scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+$dst = $scriptDir
 New-Item -ItemType Directory -Force -Path $dst | Out-Null
 
 $list = gh codespace list --json name,state,lastUsedAt | ConvertFrom-Json
