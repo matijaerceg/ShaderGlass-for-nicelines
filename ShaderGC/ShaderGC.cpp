@@ -32,6 +32,52 @@ static uint8_t* CopyVector(const std::vector<uint8_t>& d)
     return copy;
 }
 
+static bool TryParseTooltipDirective(const std::string& line, std::string& paramName, std::string& tooltipText)
+{
+    constexpr const char* kPrefixA = "// SG_TOOLTIP ";
+    constexpr const char* kPrefixB = "//SG_TOOLTIP ";
+
+    std::string payload;
+    if(line.starts_with(kPrefixA))
+    {
+        payload = trim(line.substr(strlen(kPrefixA)));
+    }
+    else if(line.starts_with(kPrefixB))
+    {
+        payload = trim(line.substr(strlen(kPrefixB)));
+    }
+    else
+    {
+        return false;
+    }
+
+    const auto separator = payload.find(':');
+    if(separator == std::string::npos)
+    {
+        return false;
+    }
+
+    paramName   = trim(payload.substr(0, separator));
+    tooltipText = trim(payload.substr(separator + 1));
+    return !paramName.empty() && !tooltipText.empty();
+}
+
+static std::string MergeTooltipText(const std::string& paramName, const std::string& description, const std::string& tooltipText)
+{
+    if(tooltipText.empty())
+    {
+        return description;
+    }
+
+    std::string labelText = trim(description);
+    if(labelText.empty())
+    {
+        labelText = paramName;
+    }
+
+    return labelText + " || " + tooltipText;
+}
+
 ShaderDef ShaderGC::CompileSourceShader(SourceShaderDef& def, ostream& log, bool& warn, const ShaderCache& cache)
 {
     // convert GLSL to SPIRV
@@ -149,6 +195,7 @@ void ShaderGC::ProcessSourceShader(SourceShaderDef& def, ostream& log, bool& war
 {
     ostringstream vertexSource;
     ostringstream fragmentSource;
+    std::map<std::string, std::string> tooltipByParam;
 
     bool        isVertex = true, isFragment = true;
     const auto& source    = LoadSource(def.input.lexically_normal(), true);
@@ -156,6 +203,17 @@ void ShaderGC::ProcessSourceShader(SourceShaderDef& def, ostream& log, bool& war
     for(const auto& line : source)
     {
         auto trimLine = trim(line);
+        std::string tooltipParamName;
+        std::string tooltipText;
+        if(TryParseTooltipDirective(trimLine, tooltipParamName, tooltipText))
+        {
+            if(!tooltipByParam.contains(tooltipParamName))
+            {
+                tooltipByParam.insert(std::make_pair(tooltipParamName, tooltipText));
+            }
+            continue;
+        }
+
         if(line.starts_with("#pragma parameter"))
         {
             // de-duping as workaround for repeated includes
@@ -240,6 +298,15 @@ void ShaderGC::ProcessSourceShader(SourceShaderDef& def, ostream& log, bool& war
             fragmentSource << line << endl;
         if(isVertex)
             vertexSource << line << endl;
+    }
+
+    for(auto& param : def.params)
+    {
+        auto tooltipIt = tooltipByParam.find(param.name);
+        if(tooltipIt != tooltipByParam.end())
+        {
+            param.desc = MergeTooltipText(param.name, param.desc, tooltipIt->second);
+        }
     }
 
     def.fragmentSource = fragmentSource.str();

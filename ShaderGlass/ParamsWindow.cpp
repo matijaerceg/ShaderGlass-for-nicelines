@@ -891,11 +891,7 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
 
     // tooltip
     {
-        std::string tooltipText = p->name;
-        if(!displayParts.tooltipPrefix.empty())
-        {
-            tooltipText = displayParts.tooltipPrefix + " - " + p->name;
-        }
+        std::string tooltipText = displayParts.tooltipPrefix.empty() ? p->name : displayParts.tooltipPrefix;
 
         if(!tooltipText.empty())
         {
