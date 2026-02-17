@@ -25,10 +25,26 @@ constexpr int VIEW_TOGGLE_WIDTH = 155;
 constexpr int VIEW_TOGGLE_HEIGHT = 25;
 constexpr int VIEW_TOGGLE_LEFT = 10;
 constexpr int VIEW_TOGGLE_TOP = 20;
+constexpr int TOP_CONTROL_GAP = 10;
 constexpr int ID_VIEWMODE_TOGGLE = 50001;
 
 namespace
 {
+LRESULT CALLBACK TrackbarSubclassProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR)
+{
+    if(message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL)
+    {
+        HWND parent = GetParent(hWnd);
+        if(parent)
+        {
+            SendMessage(parent, WM_MOUSEWHEEL, wParam, lParam);
+        }
+        return 0;
+    }
+
+    return DefSubclassProc(hWnd, message, wParam, lParam);
+}
+
 std::string TrimCopy(const std::string& value)
 {
     size_t start = value.find_first_not_of(" \t");
@@ -292,9 +308,6 @@ void ParamsWindow::Resize()
         SendMessage(m_resetButtonWnd, WM_SETFONT, (WPARAM)m_font, MAKELPARAM(TRUE, 0));
         SendMessage(m_closeButtonWnd, WM_SETFONT, (WPARAM)m_font, MAKELPARAM(TRUE, 0));
         SendMessage(m_viewModeToggleWnd, WM_SETFONT, (WPARAM)m_font, MAKELPARAM(TRUE, 0));
-        SetWindowPos(m_viewModeToggleWnd, 0, (LONG)(m_dpiScale * VIEW_TOGGLE_LEFT), (LONG)(m_dpiScale * VIEW_TOGGLE_TOP), VIEW_TOGGLE_WIDTH * m_dpiScale, VIEW_TOGGLE_HEIGHT * m_dpiScale, SWP_NOZORDER);
-        SetWindowPos(m_resetButtonWnd, 0, 0, 0, BUTTON_WIDTH * m_dpiScale, BUTTON_HEIGHT * m_dpiScale, SWP_NOMOVE | SWP_NOZORDER);
-        SetWindowPos(m_closeButtonWnd, 0, 0, 0, BUTTON_WIDTH * m_dpiScale, BUTTON_HEIGHT * m_dpiScale, SWP_NOMOVE | SWP_NOZORDER);
 
         RebuildControls(false);
     }
@@ -329,6 +342,26 @@ void ParamsWindow::Resize()
         si.nPos = 0;
         SetScrollInfo(m_mainWindow, SB_VERT, &si, true);
     }
+
+    const LONG topLeft   = (LONG)(m_dpiScale * VIEW_TOGGLE_LEFT);
+    const LONG topY      = (LONG)(m_dpiScale * BUTTON_TOP);
+    const LONG gap       = (LONG)(m_dpiScale * TOP_CONTROL_GAP);
+    const LONG buttonW   = (LONG)(m_dpiScale * BUTTON_WIDTH);
+    const LONG buttonH   = (LONG)(m_dpiScale * BUTTON_HEIGHT);
+    const LONG toggleW   = (LONG)(m_dpiScale * VIEW_TOGGLE_WIDTH);
+    const LONG toggleH   = (LONG)(m_dpiScale * VIEW_TOGGLE_HEIGHT);
+
+    LONG x = topLeft;
+    if(IsWindowVisible(m_resetButtonWnd))
+    {
+        SetWindowPos(m_resetButtonWnd, NULL, x, topY, buttonW, buttonH, SWP_NOZORDER | SWP_NOACTIVATE);
+        x += buttonW + gap;
+    }
+
+    SetWindowPos(m_closeButtonWnd, NULL, x, topY, buttonW, buttonH, SWP_NOZORDER | SWP_NOACTIVATE);
+    x += buttonW + gap;
+
+    SetWindowPos(m_viewModeToggleWnd, NULL, x, (LONG)(m_dpiScale * VIEW_TOGGLE_TOP), toggleW, toggleH, SWP_NOZORDER | SWP_NOACTIVATE);
 
     for(size_t i = 0; i < m_trackbars.size(); ++i)
     {
@@ -490,18 +523,9 @@ void ParamsWindow::RebuildControls(bool doResize)
     }
 
     if(m_trackbars.size())
-        SetWindowPos(m_resetButtonWnd,
-                     m_mainWindow,
-                     (LONG)(m_dpiScale * ((WINDOW_WIDTH / 3) - (BUTTON_WIDTH / 2))),
-                     (LONG)(m_dpiScale * BUTTON_TOP),
-                     0,
-                     0,
-                     SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW);
+        ShowWindow(m_resetButtonWnd, SW_SHOW);
     else
         ShowWindow(m_resetButtonWnd, SW_HIDE);
-
-    SetWindowPos(
-        m_closeButtonWnd, m_mainWindow, (LONG)(m_dpiScale * ((2 * WINDOW_WIDTH / 3) - (BUTTON_WIDTH / 2))), (LONG)(m_dpiScale * BUTTON_TOP), 0, 0, SWP_NOSIZE | SWP_NOZORDER);
 
     if(doResize)
         Resize();
@@ -706,6 +730,7 @@ void ParamsWindow::AddTrackbar(UINT iMin, UINT iMax, UINT iStart, UINT iSteps, c
                                (HMENU)m_trackbars.size(),
                                m_instance,
                                NULL);
+    SetWindowSubclass(hwndTrack, TrackbarSubclassProc, 1, 0);
 
     SendMessage(hwndTrack,
                 TBM_SETRANGE,
